@@ -43,4 +43,4 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           push: true
-          tags: ${{ vars.DOCKER_USERNAME }}/${{ github.event.repository.name }}:latest
+          tags: ${{ vars.DOCKER_USERNAME }}/${{ github.event.repository.name | lower }}:latest
