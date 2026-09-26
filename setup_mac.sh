@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time setup on macOS: a private Python environment with vivaah installed.
-# Usage: open Terminal in this folder and run   ./setup_mac.sh
+# Usage: open Terminal in this folder and run   bash setup_mac.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 

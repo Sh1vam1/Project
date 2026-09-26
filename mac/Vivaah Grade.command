@@ -2,7 +2,7 @@
 # Double-click in Finder: pick a wedding folder, pick a look, get Lightroom edits and/or finished JPEGs.
 cd "$(dirname "$0")/.." || exit 1
 if [ ! -f .venv/bin/activate ]; then
-  osascript -e 'display alert "vivaah is not installed yet" message "Open Terminal in the vivaah folder and run ./setup_mac.sh first."'
+  osascript -e 'display alert "vivaah is not installed yet" message "Open Terminal in the vivaah folder and run: bash setup_mac.sh"'
   exit 1
 fi
 # shellcheck disable=SC1091

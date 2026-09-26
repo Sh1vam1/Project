@@ -49,7 +49,7 @@ Fujifilm, Panasonic, Olympus/OM, Leica, Pentax, Hasselblad...).
    window, press Enter, then run:
 
    ```bash
-   ./setup_mac.sh
+   bash setup_mac.sh
    ```
 
    It needs Python 3.9+ (macOS usually has it; otherwise get it from
