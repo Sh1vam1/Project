@@ -1,0 +1,78 @@
+{
+  "id": "royal-heritage",
+  "name": "Royal Heritage - Rich Reds & Gold",
+  "description": "Warm, rich and regal: deep true reds for bridal lehengas, glowing gold jewellery, rich skin and deep contrast. Classic premium Indian wedding look for pheras, palaces and heritage venues.",
+  "best_for": [
+    "wedding ceremony / pheras",
+    "palace & heritage venues",
+    "bridal portraits in red"
+  ],
+  "settings": {
+    "contrast": 16,
+    "highlights": -40,
+    "shadows": 18,
+    "whites": 4,
+    "blacks": -16,
+    "clarity": 6,
+    "vibrance": 14,
+    "saturation": 0,
+    "curve": [[0, 0], [60, 52], [128, 130], [192, 199], [255, 250]],
+    "hue": {
+      "red": -8,
+      "orange": 2,
+      "yellow": -8,
+      "green": -30,
+      "aqua": -10,
+      "blue": -10
+    },
+    "sat": {
+      "red": 12,
+      "orange": -4,
+      "yellow": 10,
+      "green": -25,
+      "aqua": -25,
+      "blue": -25,
+      "purple": -10
+    },
+    "lum": {
+      "red": -10,
+      "orange": 6,
+      "yellow": -4,
+      "green": -15,
+      "blue": -5
+    },
+    "grade_shadow_hue": 25,
+    "grade_shadow_sat": 12,
+    "grade_mid_hue": 38,
+    "grade_mid_sat": 4,
+    "grade_high_hue": 48,
+    "grade_high_sat": 12,
+    "grade_blending": 55,
+    "grade_balance": 8,
+    "cal_red_hue": 3,
+    "cal_blue_sat": 15,
+    "vignette_amount": -12,
+    "vignette_midpoint": 40,
+    "vignette_feather": 65,
+    "vignette_highlights": 30,
+    "sharpen_amount": 40,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.75
+  },
+  "auto": {
+    "skin_L": 62,
+    "white_L": 95,
+    "black_L": 1.5,
+    "warmth": 8,
+    "tint": 2,
+    "ambience_keep": 0.35,
+    "foliage_hue": 118,
+    "foliage_chroma": 0.07,
+    "sky_chroma": 0.05,
+    "skin_hue": 55,
+    "skin_chroma": [0.06, 0.1]
+  },
+  "variants": {}
+}

@@ -1,0 +1,78 @@
+{
+  "id": "pastel-fine-art",
+  "name": "Soft Pastel Fine-Art",
+  "description": "Bright, airy and creamy: lifted soft blacks, gentle contrast, pastel greens and blues, luminous skin. For day functions, destination and garden weddings.",
+  "best_for": [
+    "day functions",
+    "destination / garden weddings",
+    "pre-wedding shoots",
+    "pastel outfits"
+  ],
+  "settings": {
+    "contrast": -18,
+    "highlights": -50,
+    "shadows": 35,
+    "whites": 8,
+    "blacks": 10,
+    "texture": -12,
+    "clarity": -10,
+    "dehaze": -6,
+    "vibrance": 5,
+    "saturation": -10,
+    "curve": [[0, 22], [70, 80], [128, 134], [190, 200], [255, 248]],
+    "hue": {
+      "red": 2,
+      "orange": 3,
+      "yellow": -12,
+      "green": -45,
+      "aqua": -10,
+      "blue": -10
+    },
+    "sat": {
+      "red": -5,
+      "orange": -8,
+      "yellow": -25,
+      "green": -45,
+      "aqua": -40,
+      "blue": -40,
+      "purple": -20,
+      "magenta": -10
+    },
+    "lum": {
+      "red": 5,
+      "orange": 10,
+      "yellow": 6,
+      "green": 10,
+      "aqua": 8,
+      "blue": 10,
+      "magenta": 5
+    },
+    "grade_shadow_hue": 30,
+    "grade_shadow_sat": 6,
+    "grade_high_hue": 45,
+    "grade_high_sat": 6,
+    "grade_blending": 70,
+    "vignette_amount": 0,
+    "sharpen_amount": 30,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.7
+  },
+  "auto": {
+    "skin_L": 69,
+    "skin_zone": [-6, 8],
+    "scene_mid_L": 60,
+    "white_L": 96,
+    "black_L": 9,
+    "warmth": 4,
+    "tint": 2,
+    "ambience_keep": 0.2,
+    "foliage_hue": 112,
+    "foliage_chroma": 0.045,
+    "sky_chroma": 0.03,
+    "skin_hue": 55,
+    "skin_chroma": [0.05, 0.085]
+  },
+  "variants": {}
+}

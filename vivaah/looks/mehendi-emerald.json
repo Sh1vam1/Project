@@ -1,0 +1,63 @@
+{
+  "id": "mehendi-emerald",
+  "name": "Mehendi Emerald - Rich Controlled Greens",
+  "description": "Deep jewel-tone emeralds instead of lime greens, warm healthy skin, controlled yellows and gentle teal shadows. Built for green outfits, garden decor and mehendi afternoons.",
+  "best_for": [
+    "mehendi",
+    "green outfits & decor",
+    "garden functions"
+  ],
+  "settings": {
+    "contrast": 10,
+    "highlights": -35,
+    "shadows": 20,
+    "blacks": -10,
+    "vibrance": 10,
+    "saturation": -4,
+    "hue": {
+      "red": -5,
+      "orange": 2,
+      "yellow": -15,
+      "green": 8,
+      "aqua": -10
+    },
+    "sat": {
+      "red": 5,
+      "orange": -5,
+      "yellow": -15,
+      "green": 5,
+      "aqua": -5,
+      "blue": -15
+    },
+    "lum": {
+      "red": -5,
+      "orange": 6,
+      "yellow": -5,
+      "green": -10
+    },
+    "grade_shadow_hue": 160,
+    "grade_shadow_sat": 6,
+    "grade_high_hue": 45,
+    "grade_high_sat": 10,
+    "grade_blending": 55,
+    "sharpen_amount": 40,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.8,
+    "outfit_protect": 0.8
+  },
+  "auto": {
+    "skin_L": 62,
+    "white_L": 95,
+    "black_L": 2.5,
+    "warmth": 4,
+    "tint": 1,
+    "ambience_keep": 0.25,
+    "foliage_hue": 150,
+    "foliage_chroma": 0.08,
+    "skin_hue": 56,
+    "skin_chroma": [0.06, 0.1]
+  },
+  "variants": {}
+}

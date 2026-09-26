@@ -1,0 +1,48 @@
+{
+  "id": "true-colour",
+  "name": "True Colour Clean - Documentary",
+  "description": "Natural and honest: accurate outfit colours, clean whites, natural skin, gentle contrast. For rituals, family formals and every photo where the real colours of the day matter most.",
+  "best_for": [
+    "rituals & family formals",
+    "documentary coverage",
+    "colour-critical outfits",
+    "album spreads"
+  ],
+  "settings": {
+    "contrast": 6,
+    "highlights": -25,
+    "shadows": 15,
+    "whites": 5,
+    "blacks": -5,
+    "clarity": 2,
+    "vibrance": 8,
+    "hue": {
+      "red": -2
+    },
+    "sat": {
+      "orange": -4,
+      "green": -8,
+      "blue": -6
+    },
+    "lum": {
+      "orange": 4
+    },
+    "sharpen_amount": 40,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.5
+  },
+  "auto": {
+    "skin_L": 63,
+    "scene_mid_L": 50,
+    "white_L": 96,
+    "black_L": 2.5,
+    "warmth": 0,
+    "tint": 0,
+    "ambience_keep": 0.2,
+    "skin_hue": 56,
+    "skin_chroma": [0.055, 0.1]
+  },
+  "variants": {}
+}

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vivaah"
+version = "0.1.0"
+description = "Automated premium colour grading for wedding photos (Lightroom sidecars, presets, LUTs, finished JPEGs)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.23",
+    "opencv-python-headless>=4.8",
+    "pillow>=10.1",
+    "rawpy>=0.18",
+]
+
+[project.optional-dependencies]
+heic = ["pillow-heif>=0.13"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+vivaah = "vivaah.cli:main"
+
+[tool.setuptools]
+packages = ["vivaah"]
+
+[tool.setuptools.package-data]
+vivaah = ["looks/*.json", "models/*.onnx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
