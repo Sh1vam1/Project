@@ -21,7 +21,8 @@ import numpy as np
 
 from .analysis import Analysis, display_to_scene_luminance, lstar, lstar_to_y
 from .color import lab_to_lch, lch_to_lab, linear_to_oklab, oklab_to_linear
-from .engine import base_curve, global_color
+from . import wb
+from .engine import base_curve, calibration_matrix, global_color
 from .looks import AutoTargets, Look
 from .settings import DevelopSettings
 
@@ -114,10 +115,48 @@ def _white_balance(a: Analysis, t: AutoTargets, scene: str) -> tuple[float, floa
 
 
 def _render_lch(L: float, C: float, h: float, s: DevelopSettings) -> tuple[float, float, float]:
+    """How a colour measured in the neutral view renders with ``s`` (white balance included)."""
     rgb = oklab_to_linear(lch_to_lab(np.array([L], np.float32), np.array([C], np.float32), np.array([h], np.float32)))
-    out = global_color(np.clip(rgb, 0, 1).reshape(1, 3), s)
+    m = calibration_matrix(s) @ wb.shift_matrix(s.temp_shift, s.tint_shift)
+    rgb = np.clip(rgb.reshape(1, 3) @ m.T, 0, None)
+    Y = float(rgb[0] @ np.array([0.2126729, 0.7151522, 0.0721750]))
+    if Y > 1.0:
+        rgb = rgb / Y
+    out = global_color(np.clip(rgb, 0, 1), s)
     Lo, Co, ho = lab_to_lch(linear_to_oklab(np.clip(out, 1e-6, None)))
     return float(Lo[0]), float(Co[0]), float(ho[0])
+
+
+def _refine_skin_balance(a: Analysis, s: DevelopSettings, t: AutoTargets) -> str | None:
+    """Nudge temperature/tint so faces land on the look's skin hue (vectorscope skin line).
+
+    White balance from surfaces can leave skin too magenta (LED, some camera
+    profiles) or too yellow; faces are what clients judge, so they get the
+    last word within small limits.
+    """
+    if not a.skin_oklab or a.face_area < 0.002:
+        return None
+    col = tuple(a.skin_oklab)
+    tol = 6.0 if a.scene in ("night", "warm_indoor") else 3.0
+    h0 = _render_lch(*col, s)[2]
+    err0 = _hue_err(t.skin_hue, h0)
+    if abs(err0) <= tol:
+        return None
+    lim_t, lim_m = (15.0, 15.0) if a.is_raw else (12.0, 12.0)
+    base_t, base_m = s.tint_shift, s.temp_shift
+    best = (err0 ** 2, 0.0, 0.0)
+    for dt in np.arange(-lim_t, lim_t + 0.01, 1.5):
+        for dm in np.arange(-lim_m, lim_m + 0.01, 3.0):
+            s.tint_shift, s.temp_shift = base_t + dt, base_m + dm
+            e = _hue_err(t.skin_hue, _render_lch(*col, s)[2])
+            e = max(abs(e) - tol * 0.5, 0.0)
+            cost = e ** 2 + 0.02 * dt ** 2 + 0.02 * dm ** 2
+            if cost < best[0]:
+                best = (cost, dt, dm)
+    s.tint_shift, s.temp_shift = base_t + best[1], base_m + best[2]
+    if not best[1] and not best[2]:
+        return None
+    return f"skin balanced to the skin-tone line ({best[2]:+.0f} mired, {best[1]:+.0f} tint)"
 
 
 def _hue_err(a: float, b: float) -> float:
@@ -175,6 +214,9 @@ def plan(a: Analysis, look: Look, strength: float = 1.0, auto: bool = True) -> P
     s.temp_shift += ts
     s.tint_shift += tt
     p.notes.append(f"scene {a.scene} ({variant}); {note}; final {ts:+.0f}/{tt:+.0f}")
+    skin_note = _refine_skin_balance(a, s, t)
+    if skin_note:
+        p.notes.append(skin_note)
 
     # 3. exposure
     ev, why = _exposure(a, t)

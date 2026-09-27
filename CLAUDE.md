@@ -35,11 +35,12 @@ a Claude Code cloud session; this file carries over what was learned there.
 ```bash
 bash setup_mac.sh                      # user-facing install (.venv + pip install -e ".[heic]")
 python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"   # dev install
-pytest                                 # 41 tests, ~5 s
+pytest                                 # 50 tests, ~6 s
 vivaah grade <folder> --look signature --xmp               # Lightroom sidecars next to raws
 vivaah grade <folder> --look signature --export out --size 2048
 vivaah preview photo.jpg --looks all   # one photo through every look
 vivaah analyze photo.NEF               # analysis + per-photo plan as JSON
+vivaah qa ~/Downloads/test --look signature   # industry-reference QA -> vivaah_qa/report.html
 vivaah learn references/ --name "My Style"   # new look from reference edits
 python tools/roundtrip.py references/ --look signature --sheet rt.jpg      # look vs references
 ```
@@ -88,9 +89,22 @@ picker and output choice via `osascript`.
 
 ## Validation so far (and what is NOT verified)
 
-- `pytest`: 41 tests pass (colour/WB maths, renderer properties, strips = whole
-  image, LUT vs direct, analysis/auto behaviour, XMP merge/restore, LUT format,
-  CLI end to end).
+- `pytest`: 50 tests pass (colour/WB maths incl. CIEDE2000 against Sharma's
+  reference data, renderer properties, strips = whole image, LUT vs direct,
+  analysis/auto behaviour, XMP merge/restore, LUT format, QA, CLI end to end).
+- `vivaah qa` (`vivaah/qa.py`) checks against industry references:
+  - ColorChecker ΔE00: 0.00 at neutral settings, 0.85 mean for `true-colour`
+  - every look keeps ColorChecker skin on the Rec.709 skin-tone line (123° ± 8)
+  - monotonic tone
+  - no NaN at extreme sliders
+  - LUT and strips exact
+  - Adobe slider ranges in presets and sidecars
+  - per photo: clipping, crushed blacks, skin angle/IRE, whites, banding, sRGB ICC,
+    EXIF
+- Skin calibration: OKLab hue 45.5 is the 123° vectorscope skin line. Looks target
+  45.5–49 (`true-colour` on the line, `signature` 48 ≈ 125°). An earlier version aimed
+  at 53–58 (129–134°, sallow); QA caught it. `auto._refine_skin_balance` nudges
+  temp/tint (±12–15) so faces land on the look's skin hue after white balance.
 - Round trip on 5 measurable references (hand-cropped): mean OKLab ΔE×100 went
   from 3.9 to 3.1 with `signature` (`docs/SIGNATURE_LOOK.md`). `tools/roundtrip.py`
   randomises the degradation per image, so its absolute numbers differ.

@@ -74,8 +74,20 @@ vivaah presets --out ~/Desktop/vivaah-presets   # Lightroom presets (.xmp) for e
 vivaah lut --out ~/Desktop/vivaah-luts           # .cube LUTs for video
 vivaah learn ~/Desktop/refs --name "Aanya Style"  # create a look from reference edits
 vivaah analyze photo.NEF                     # what vivaah sees and what it would change
+vivaah qa ~/Downloads/test                   # quality check against industry references (HTML report)
 vivaah restore "/path/to/wedding"            # undo: restore the original sidecars
 ```
+
+**Quality check.** `vivaah qa <folder>` grades the photos and writes
+`vivaah_qa/report.html`. The report shows before/after thumbnails and pass/warn/fail
+for:
+
+- colour accuracy on the ColorChecker (CIEDE2000)
+- skin on the vectorscope skin-tone line, and skin brightness on the waveform (IRE)
+- clipping and crushed blacks, banding, white-balance tint
+- sRGB profile and EXIF in the finished files
+- every Lightroom value inside Adobe's slider ranges
+- consistency across the set, and speed
 
 Every `grade` run writes `vivaah_report/` containing:
 

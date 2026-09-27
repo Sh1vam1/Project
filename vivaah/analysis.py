@@ -13,7 +13,7 @@ import numpy as np
 from . import faces as facemod
 from . import wb
 from .color import linear_to_oklab, linear_to_srgb, luminance, lab_to_lch, hue_distance, smoothstep
-from .engine import RenderContext, band_weights, base_curve, tone_stage
+from .engine import SKIN_HUE_IDEAL, RenderContext, band_weights, base_curve, tone_stage
 from .imageio import Photo
 from .settings import BANDS, DevelopSettings
 
@@ -184,7 +184,7 @@ def _solve_wb(cues: list[WhiteBalanceCue], face_rgb: np.ndarray | None, face_con
         out = ((cone_base * cone_face) / cones_new) @ back.T
         lab = linear_to_oklab(np.maximum(out, 1e-6).astype(np.float32))
         L, Cc, hh = lab_to_lch(lab)
-        hue_err = ((hh - 57.0 + 180.0) % 360.0) - 180.0
+        hue_err = ((hh - SKIN_HUE_IDEAL + 180.0) % 360.0) - 180.0  # vectorscope skin-tone line
         chroma_err = np.log(np.maximum(Cc, 1e-4) / (0.078 * np.clip(L / 0.68, 0.6, 1.3)))
         cost += face_conf * ((hue_err / 7.0) ** 2 + (chroma_err / 0.38) ** 2)
     i, j = np.unravel_index(np.argmin(cost), cost.shape)

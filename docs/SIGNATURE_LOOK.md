@@ -46,7 +46,7 @@ photographers' work and show real people. Only the numbers below are.
 | Slate skies | Blue hue −16, sat −34; Aqua hue −18, sat −38 | sky chroma 0.035 |
 | Ivory white cap | tone curve top 246, Blue curve top 253, Highlights −30, Whites −4; Highlights grade 48° / 2 | brightest tones to L\* 93 |
 | Warm deep blacks | Red curve 0→9, Green curve 0→4 (shadows only); Shadows grade 38° / 8; Blacks −6 | darkest tones to L\* 2.5 |
-| Peach-golden skin | Orange hue +2, sat −5, lum +7; Calibration red hue +4, blue sat +10; skin protection 0.7 | skin steered to hue 53°, chroma 0.055–0.085; faces exposed toward L\* 64 (comfort zone keeps the photographer's intent) |
+| Peach-golden skin | Orange hue +2, sat −5, lum +7; Calibration red hue +4, blue sat +10; skin protection 0.7 | skin steered to OKLab hue 48° (≈ 125° on a vectorscope, just warm of the 123° skin-tone line), chroma 0.055–0.085; faces exposed toward L\* 64 (comfort zone keeps the photographer's intent) |
 | Crimson reds | Red hue −6, sat +4, lum −8 | outfit protection when a big saturated red/green/yellow area is found |
 | Soft film finish | Contrast +8, Texture −6, grain 8, vignette −8 | – |
 | Night variant | contrast +16, highlights −55, whites −22, curve top 228, teal shadows 205° / 9, warm highlights 40° / 12 | faces L\* 46 (wide comfort zone), whites L\* 82, 35% of warm light kept |

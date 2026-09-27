@@ -30,9 +30,13 @@ grades remain popular for couple sessions.
 ## 2. Skin tones for South Asian complexions
 
 - **Where skin lives:** almost entirely in Lightroom's **Orange** band, with some Red.
-  In vivaah's measurements, well-balanced faces sit at an OKLab hue of about 45–60°,
-  from fair to deep complexions. Deeper skin sits slightly redder and is relatively more
-  saturated for its brightness.
+  Colourists check skin on a Rec.709 **vectorscope**: every complexion, fair to deep,
+  falls on the *skin-tone line* at about 123° when the light is neutral (the
+  ColorChecker skin patches sit at 122–123°). Deeper skin is only more or less
+  saturated, not a different hue. In OKLab terms the line is hue ≈ 45.5°. vivaah
+  balances faces toward this line and lets a look add a small warm offset (Signature
+  ≈ 125°, golden film looks ≈ 126°). More than ±8° off the line reads as magenta or
+  sallow skin.
 - **Common problems and fixes:**
 
   | Problem | Usual cause | Fix |
@@ -124,7 +128,7 @@ vivaah handles this in three ways:
   airy looks go higher and moody ones lower.
 - **OKLab hue / chroma:** a modern perceptual colour space. Hue is the colour angle and
   chroma is colourfulness. Examples: olive foliage ≈ hue 105–112°, chroma ≈ 0.06; skin ≈
-  hue 50–56°, chroma ≈ 0.06–0.08.
+  hue 45–49° (123–126° on a vectorscope), chroma ≈ 0.06–0.08.
 - **Mireds** (white balance): 1,000,000 / Kelvin. A shift of 10 mireds looks equally
   large at any colour temperature, which is why vivaah uses mireds internally.
 

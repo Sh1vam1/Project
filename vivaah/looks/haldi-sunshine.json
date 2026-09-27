@@ -58,7 +58,7 @@
     "wb_strength": 0.8,
     "foliage_hue": 115,
     "foliage_chroma": 0.065,
-    "skin_hue": 58,
+    "skin_hue": 49,
     "skin_chroma": [0.06, 0.1]
   },
   "variants": {}

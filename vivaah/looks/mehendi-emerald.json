@@ -56,7 +56,7 @@
     "ambience_keep": 0.25,
     "foliage_hue": 150,
     "foliage_chroma": 0.08,
-    "skin_hue": 56,
+    "skin_hue": 47,
     "skin_chroma": [0.06, 0.1]
   },
   "variants": {}

@@ -136,6 +136,13 @@ def cmd_restore(args) -> int:
     return 0
 
 
+def cmd_qa(args) -> int:
+    from .qa import run
+
+    _, checks = run(args.inputs, look_id=args.look, out_dir=args.out, size=args.size, limit=args.limit)
+    return 1 if any(c.status == "fail" for c in checks) else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="vivaah", description="Automated premium colour grading for wedding photos.")
     p.add_argument("--version", action="version", version=f"vivaah {__version__}")
@@ -195,6 +202,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--look", default="signature")
     s.add_argument("--strength", type=float, default=1.0)
     s.set_defaults(func=cmd_analyze)
+
+    s = sub.add_parser("qa", help="quality check against industry references; writes an HTML report")
+    s.add_argument("inputs", nargs="*", help="photos or folders to test (optional: engine checks run anyway)")
+    s.add_argument("--look", default="signature")
+    s.add_argument("--out", default="vivaah_qa", help="report folder")
+    s.add_argument("--size", type=int, default=2048, help="long edge of the test renders")
+    s.add_argument("--limit", type=int, help="only the first N photos")
+    s.set_defaults(func=cmd_qa)
 
     s = sub.add_parser("restore", help="undo: restore/remove the sidecars vivaah wrote")
     s.add_argument("inputs", nargs="+")

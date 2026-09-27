@@ -50,9 +50,11 @@ DIRECT_COLOR_MAX_PIXELS = 3_000_000
 _BAND_WHEEL = (0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0)
 BAND_CENTERS = np.array([wheel_hue_to_oklab_hue(h) for h in _BAND_WHEEL], dtype=np.float32)
 
-# Skin sits around the Lightroom "orange" band; this is the OKLab hue window
-# in which a correctly balanced face lands for fair to deep complexions.
-SKIN_HUE_LO, SKIN_HUE_HI, SKIN_HUE_IDEAL = 38.0, 72.0, 56.0
+# Skin sits around the Lightroom "orange" band. OKLab hue 45.5 is the Rec.709
+# vectorscope skin-tone line (about 123 degrees), where every complexion lands
+# under neutral light; the window is the flattering range around it
+# (about 116..133 degrees on a vectorscope).
+SKIN_HUE_LO, SKIN_HUE_HI, SKIN_HUE_IDEAL = 36.0, 59.0, 45.5
 
 
 @dataclass

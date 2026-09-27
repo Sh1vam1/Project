@@ -41,7 +41,7 @@ class AutoTargets:
     foliage_hue: float | None = None  # OKLab hue greens should land on
     foliage_chroma: float | None = None
     sky_chroma: float | None = None
-    skin_hue: float = 56.0  # OKLab hue for skin
+    skin_hue: float = 46.0  # OKLab hue for skin (45.5 = the 123° vectorscope skin-tone line)
     skin_chroma: tuple = (0.05, 0.10)
 
     @classmethod

@@ -187,3 +187,46 @@ def smoothstep(e0: float, e1: float, x: np.ndarray) -> np.ndarray:
 def hue_distance(h1: np.ndarray, h2: float) -> np.ndarray:
     """Absolute circular distance between hue angles in degrees."""
     return np.abs((h1 - h2 + 180.0) % 360.0 - 180.0)
+
+
+def delta_e2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
+    """CIEDE2000 colour difference between CIE L*a*b* arrays (Sharma, Wu & Dalal 2005)."""
+    lab1 = np.asarray(lab1, dtype=np.float64)
+    lab2 = np.asarray(lab2, dtype=np.float64)
+    L1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
+    L2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
+    C1, C2 = np.hypot(a1, b1), np.hypot(a2, b2)
+    Cm = (C1 + C2) / 2.0
+    G = 0.5 * (1.0 - np.sqrt(Cm**7 / (Cm**7 + 25.0**7)))
+    a1p, a2p = (1.0 + G) * a1, (1.0 + G) * a2
+    C1p, C2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360.0
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360.0
+    dLp = L2 - L1
+    dCp = C2p - C1p
+    dh = h2p - h1p
+    dh = np.where(dh > 180.0, dh - 360.0, np.where(dh < -180.0, dh + 360.0, dh))
+    dh = np.where(C1p * C2p == 0, 0.0, dh)
+    dHp = 2.0 * np.sqrt(C1p * C2p) * np.sin(np.radians(dh) / 2.0)
+    Lpm = (L1 + L2) / 2.0
+    Cpm = (C1p + C2p) / 2.0
+    hsum = h1p + h2p
+    hpm = np.where(np.abs(h1p - h2p) <= 180.0, hsum / 2.0,
+                   np.where(hsum < 360.0, (hsum + 360.0) / 2.0, (hsum - 360.0) / 2.0))
+    hpm = np.where(C1p * C2p == 0, hsum, hpm)
+    T = (1.0 - 0.17 * np.cos(np.radians(hpm - 30.0)) + 0.24 * np.cos(np.radians(2.0 * hpm))
+         + 0.32 * np.cos(np.radians(3.0 * hpm + 6.0)) - 0.20 * np.cos(np.radians(4.0 * hpm - 63.0)))
+    dtheta = 30.0 * np.exp(-(((hpm - 275.0) / 25.0) ** 2))
+    Rc = 2.0 * np.sqrt(Cpm**7 / (Cpm**7 + 25.0**7))
+    Sl = 1.0 + 0.015 * (Lpm - 50.0) ** 2 / np.sqrt(20.0 + (Lpm - 50.0) ** 2)
+    Sc = 1.0 + 0.045 * Cpm
+    Sh = 1.0 + 0.015 * Cpm * T
+    Rt = -np.sin(np.radians(2.0 * dtheta)) * Rc
+    return np.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh))
+
+
+def ycbcr709(rgb_encoded: np.ndarray) -> np.ndarray:
+    """Rec.709 Y'CbCr (Y' 0..1, Cb/Cr -0.5..0.5) from gamma-encoded RGB, as a vectorscope sees it."""
+    e = np.asarray(rgb_encoded, dtype=np.float32)
+    Y = e @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    return np.stack([Y, (e[..., 2] - Y) / 1.8556, (e[..., 0] - Y) / 1.5748], axis=-1)

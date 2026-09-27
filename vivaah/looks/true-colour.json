@@ -41,7 +41,7 @@
     "warmth": 0,
     "tint": 0,
     "ambience_keep": 0.2,
-    "skin_hue": 56,
+    "skin_hue": 45.5,
     "skin_chroma": [0.055, 0.1]
   },
   "variants": {}

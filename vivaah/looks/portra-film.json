@@ -69,7 +69,7 @@
     "foliage_hue": 110,
     "foliage_chroma": 0.055,
     "sky_chroma": 0.04,
-    "skin_hue": 58,
+    "skin_hue": 49,
     "skin_chroma": [0.055, 0.095]
   },
   "variants": {}
