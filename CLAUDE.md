@@ -122,6 +122,10 @@ picker and output choice via `osascript`.
 
 ## Next steps (agreed direction)
 
+**Start with `docs/LOCAL_TEST_PLAN.md`.** The user asked for installation, testing
+against industry standards, fixes and improvements on their Mac. Test photos are in
+`~/Downloads/test`. Always work on a copy.
+
 1. **On the Mac:**
    - Run on a few real raws from one wedding, import into Lightroom Classic and
      compare with vivaah's JPEG preview. Fix any sidecar field Lightroom rejects;
