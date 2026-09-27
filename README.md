@@ -147,7 +147,10 @@ those numbers.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
 pytest
+python tools/roundtrip.py references/ --look signature   # how close a look gets to your references
 ```
+
+`CLAUDE.md` has the full project context for Claude Code sessions.
 
 Code map:
 

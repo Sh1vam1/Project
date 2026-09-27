@@ -16,6 +16,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
@@ -87,13 +88,21 @@ class Look:
     def to_json(self) -> str:
         d = asdict(self)
         d.pop("source", None)
-        return json.dumps(d, indent=2)
+        return _compact_json(d)
 
     def save(self, path: str | os.PathLike) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.to_json() + "\n")
         return path
+
+
+def _compact_json(d: dict) -> str:
+    """Indented JSON that keeps numeric lists (curve points, ranges) on one line."""
+    s = json.dumps(d, indent=2)
+    s = re.sub(r"\[\s+([-\d.,\s]+?)\s+\]", lambda m: "[" + ", ".join(x.strip() for x in m.group(1).split(",")) + "]", s)
+    return re.sub(r"\[\s+(\[[-\d., ]+\](?:,\s+\[[-\d., ]+\])*)\s+\]",
+                  lambda m: "[" + re.sub(r",\s+\[", ", [", m.group(1)) + "]", s)
 
 
 def load_look_file(path: str | os.PathLike) -> Look:
