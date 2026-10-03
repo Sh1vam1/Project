@@ -39,8 +39,10 @@ Culling is safe. Existing sidecars are merged, not replaced:
 
 - **Kept:** star ratings, colour labels, keywords, crops, masks, spot removal and the
   camera profile.
-- **Backed up:** the original sidecar is copied once to `*.xmp.vivaah-backup`.
-  `vivaah restore <folder>` puts it back.
+- **Backed up:** a sidecar written by Lightroom (or any other app) is copied to
+  `*.xmp.vivaah-backup` before vivaah first changes it. Running vivaah again, even
+  with a different look, never replaces that backup. `vivaah restore <folder>` puts
+  it back.
 
 ## Lightroom (cloud / desktop "Lightroom")
 

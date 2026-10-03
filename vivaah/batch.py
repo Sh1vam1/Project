@@ -14,6 +14,7 @@ import multiprocessing
 import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +53,7 @@ class Item:
     result: pipeline.Result | None = None
     error: str | None = None
     outputs: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
 
 
 def _analyze(args):
@@ -63,23 +65,87 @@ def _analyze(args):
 
 
 def _output(args):
-    item_path, result, look_id, opts_dict, rel = args
-    outs = []
+    item_path, result, look_id, opts_dict, out = args
+    outs, warnings = [], []
     try:
         if opts_dict["write_xmp"] and imageio.is_raw(item_path) and item_path.suffix.lower() != ".dng":
-            side = xmp.write_sidecar(item_path, result.plan.settings, result.analysis.wb_as_shot and
-                                     tuple(result.analysis.wb_as_shot), look_id, result.plan.variant,
+            as_shot = tuple(result.analysis.wb_as_shot) if result.analysis.wb_as_shot else None
+            side = xmp.write_sidecar(item_path, result.plan.settings, as_shot, look_id, result.plan.variant,
                                      opts_dict["exposure_bias"])
             outs.append(str(side))
-        if opts_dict["export_dir"]:
-            out = Path(opts_dict["export_dir"]) / rel.with_suffix("." + opts_dict["fmt"])
+            if as_shot is None and xmp.read_as_shot(side) is None:
+                warnings.append("camera white balance unknown: Lightroom keeps the camera's white balance "
+                                "for this photo (the exported file has vivaah's correction)")
+        if out is not None:
             photo = imageio.load(item_path, long_edge=opts_dict["long_edge"])
             enc = pipeline.render_photo(photo, result.plan.settings, result.skin_mask, encoded=True)
-            imageio.save(enc, out, quality=opts_dict["quality"], exif=photo.exif, encoded=True)
+            exif = photo.exif
+            del photo  # free the full-size linear copy before encoding
+            imageio.save(enc, out, quality=opts_dict["quality"], exif=exif, encoded=True)
             outs.append(str(out))
-        return outs, None
+        return outs, None, warnings
     except Exception as exc:  # noqa: BLE001
-        return outs, f"{type(exc).__name__}: {exc}"
+        return outs, f"{type(exc).__name__}: {exc}", warnings
+
+
+def _resolved(p: Path) -> str:
+    return str(p.expanduser().resolve()).casefold()  # macOS volumes are usually case-insensitive
+
+
+def check_export_dir(export_dir: str | Path, inputs: list[str]) -> Path:
+    """Refuse export folders that would mix outputs with (or overwrite) the original photos."""
+    exp = Path(export_dir).expanduser().resolve()
+    for i in inputs:
+        src = Path(i).expanduser().resolve()
+        folder = src if src.is_dir() else src.parent
+        if exp == folder:
+            raise ValueError(f"the export folder is the same folder as the original photos ({folder}). "
+                             "Choose a separate folder, e.g. a 'vivaah-graded' folder inside the wedding folder.")
+    return exp
+
+
+def plan_exports(items: list[Item], roots: list[Path], export_dir: Path, fmt: str) -> dict[Path, Path]:
+    """One unique output path per photo; never an input file."""
+    inputs = {_resolved(it.path) for it in items}
+    multi = len(roots) > 1
+    used: set[str] = set()
+    plan: dict[Path, Path] = {}
+    for it in items:
+        root = next((r for r in roots if r == it.path.parent or r in it.path.parents), None)
+        if root is not None:
+            rel = it.path.relative_to(root)
+            if multi:
+                rel = Path(root.name) / rel
+        else:
+            rel = Path(it.path.name)
+        out = export_dir / rel.with_suffix("." + fmt)
+        n = 2
+        while _resolved(out) in used:
+            out = out.with_name(f"{rel.stem}-{n}.{fmt}")
+            n += 1
+        if _resolved(out) in inputs:
+            raise ValueError(f"exporting {it.path.name} would overwrite an original photo ({out}).")
+        used.add(_resolved(out))
+        plan[it.path] = out
+    return plan
+
+
+def _export_workers(items: list[Item], workers: int, long_edge: int | None) -> int:
+    """Cap parallel full-size renders by RAM (a 24 MP render peaks around 1 GB per worker)."""
+    try:
+        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        return workers
+    biggest = 0
+    for it in items:
+        if it.result:
+            w, h = it.result.analysis.full_size or (6000, 4000)
+            px = w * h
+            if long_edge and max(w, h) > long_edge:
+                px = int(px * (long_edge / max(w, h)) ** 2)
+            biggest = max(biggest, px)
+    per_worker = biggest * 48 + 300 * 2**20
+    return max(1, min(workers, int(total * 0.6 // max(per_worker, 1))))
 
 
 def smooth_white_balance(items: list[Item], gap_minutes: float = 5.0, weight: float = 0.6) -> int:
@@ -88,13 +154,16 @@ def smooth_white_balance(items: list[Item], gap_minutes: float = 5.0, weight: fl
 
     raws = [it for it in items if it.result and it.result.analysis.is_raw and it.result.analysis.wb_as_shot
             and it.result.analysis.capture_time]
-    raws.sort(key=lambda it: it.result.analysis.capture_time)
+    # One sequence = one camera in one photographer's folder, in time order; a gap or a change
+    # of light (scene type) starts a new one. Sorting by shooter first keeps two photographers
+    # with the same camera model from being mixed when their frames interleave in time.
+    raws.sort(key=lambda it: (it.result.analysis.camera, str(it.path.parent), it.result.analysis.capture_time))
     groups: list[list[Item]] = []
     last_t, last_key = None, None
     for it in raws:
         a = it.result.analysis
         t = datetime.fromisoformat(a.capture_time)
-        key = (a.camera, a.scene)
+        key = (a.camera, a.scene, it.path.parent)
         if last_t is None or (t - last_t).total_seconds() > gap_minutes * 60 or key != last_key:
             groups.append([])
         groups[-1].append(it)
@@ -122,8 +191,50 @@ def smooth_white_balance(items: list[Item], gap_minutes: float = 5.0, weight: fl
     return changed
 
 
+CRASHED = ("the decoder crashed on this file (corrupt or unsupported raw?) "
+           "or the computer ran out of memory")
+
+
+def _isolated(fn, args, crashed: Callable[[], object]):
+    """Run one job in its own process; ``crashed()`` if that process dies too."""
+    try:
+        with ProcessPoolExecutor(max_workers=1, mp_context=_CTX) as pool:
+            return pool.submit(fn, args).result()
+    except BrokenProcessPool:
+        return crashed()
+
+
+def _parallel(fn, jobs: dict, workers: int, crashed: Callable[[], object]):
+    """Yield (key, result) as jobs finish; one worker runs in-process (no subprocesses).
+
+    A worker process can die outright (LibRaw crashing on a damaged file, or the
+    system running out of memory), which breaks the whole pool. The pool hands out
+    jobs in order, so the jobs that were running are the first few still pending:
+    those are retried one at a time in their own process (``crashed()`` is their
+    result if they kill it again) and the rest continue in a fresh pool.
+    """
+    if workers <= 1 or len(jobs) <= 1:
+        for key, args in jobs.items():
+            yield key, fn(args)
+        return
+    pending = dict(jobs)  # insertion order = submission order
+    while pending:
+        try:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=_CTX) as pool:
+                futs = {pool.submit(fn, args): key for key, args in pending.items()}
+                for fut in as_completed(futs):
+                    res = fut.result()
+                    key = futs[fut]
+                    del pending[key]
+                    yield key, res
+        except BrokenProcessPool:
+            for key in list(pending)[:workers + 1]:
+                yield key, _isolated(fn, pending.pop(key), crashed)
+
+
 def run(inputs: list[str], opts: BatchOptions, log: Callable[[str], None] = print) -> list[Item]:
     look: Look = get_look(opts.look, opts.looks_dirs)
+    export_dir = check_export_dir(opts.export_dir, inputs) if opts.export_dir else None
     paths = imageio.find_photos(inputs)
     if not paths:
         log("No supported photos found.")
@@ -138,35 +249,35 @@ def run(inputs: list[str], opts: BatchOptions, log: Callable[[str], None] = prin
                 "Lightroom ignores sidecars for them. Use --export to get finished files for those.")
     items = [Item(p) for p in paths]
     t0 = time.time()
-    with ProcessPoolExecutor(max_workers=workers, mp_context=_CTX) as pool:
-        futs = {pool.submit(_analyze, (it.path, look, opts.strength, opts.auto)): it for it in items}
-        for n, fut in enumerate(as_completed(futs), 1):
-            it = futs[fut]
-            it.result, it.error = fut.result()
-            if n % 25 == 0 or n == len(items):
-                log(f"  analysed {n}/{len(items)}  ({time.time() - t0:.0f}s)")
+    jobs = {i: (it.path, look, opts.strength, opts.auto) for i, it in enumerate(items)}
+    for n, (i, (result, error)) in enumerate(_parallel(_analyze, jobs, workers, lambda: (None, CRASHED)), 1):
+        items[i].result, items[i].error = result, error
+        if n % 25 == 0 or n == len(items):
+            log(f"  analysed {n}/{len(items)}  ({time.time() - t0:.0f}s)")
     if opts.consistency:
         n = smooth_white_balance(items)
         if n:
             log(f"  matched white balance across sequences for {n} raw photos")
-    opts_dict = {k: getattr(opts, k) for k in ("write_xmp", "export_dir", "long_edge", "fmt", "quality", "exposure_bias")}
+    opts_dict = {k: getattr(opts, k) for k in ("write_xmp", "long_edge", "fmt", "quality", "exposure_bias")}
     todo = [it for it in items if it.result]
-    if opts.write_xmp or opts.export_dir:
+    exports = plan_exports(todo, roots, export_dir, opts.fmt) if export_dir else {}
+    if export_dir:
+        imageio.mark_output_dir(export_dir)
+    if opts.write_xmp or export_dir:
         t1 = time.time()
-        with ProcessPoolExecutor(max_workers=workers, mp_context=_CTX) as pool:
-            futs = {}
-            for it in todo:
-                root = next((r for r in roots if r in it.path.parents), it.path.parent)
-                rel = it.path.relative_to(root)
-                futs[pool.submit(_output, (it.path, it.result, look.id, opts_dict, rel))] = it
-            for n, fut in enumerate(as_completed(futs), 1):
-                it = futs[fut]
-                it.outputs, err = fut.result()
-                it.error = it.error or err
-                if n % 25 == 0 or n == len(todo):
-                    log(f"  wrote {n}/{len(todo)}  ({time.time() - t1:.0f}s)")
-    report_dir = Path(opts.export_dir) if opts.export_dir else (roots[0] if roots else paths[0].parent)
-    write_report(items, report_dir / "vivaah_report", look)
+        out_workers = _export_workers(todo, workers, opts.long_edge) if export_dir else workers
+        if out_workers < workers:
+            log(f"  using {out_workers} workers for full-size renders (memory)")
+        jobs = {i: (it.path, it.result, look.id, opts_dict, exports.get(it.path)) for i, it in enumerate(todo)}
+        results = _parallel(_output, jobs, out_workers, lambda: ([], CRASHED, []))
+        for n, (i, (outs, err, warnings)) in enumerate(results, 1):
+            it = todo[i]
+            it.outputs, it.warnings = outs, warnings
+            it.error = it.error or err
+            if n % 25 == 0 or n == len(todo):
+                log(f"  wrote {n}/{len(todo)}  ({time.time() - t1:.0f}s)")
+    report_dir = export_dir if export_dir else (roots[0] if roots else paths[0].parent)
+    write_report(items, imageio.mark_output_dir(report_dir / "vivaah_report"), look)
     if opts.sheet and opts.export_dir:
         _sample_sheet(items, report_dir / "vivaah_report" / "before_after.jpg", opts)
     failed = [it for it in items if it.error]
@@ -174,6 +285,9 @@ def run(inputs: list[str], opts: BatchOptions, log: Callable[[str], None] = prin
         f" Report: {report_dir / 'vivaah_report'}")
     for it in failed[:20]:
         log(f"  ! {it.path.name}: {it.error}")
+    warned = [it for it in items if it.warnings]
+    for it in warned[:20]:
+        log(f"  note {it.path.name}: {'; '.join(it.warnings)}")
     return items
 
 
@@ -183,7 +297,7 @@ def write_report(items: list[Item], folder: Path, look: Look) -> None:
     full = []
     for it in items:
         r = it.result
-        row = {"file": str(it.path), "error": it.error or ""}
+        row = {"file": str(it.path), "error": it.error or "", "warnings": "; ".join(it.warnings)}
         if r:
             a, s = r.analysis, r.plan.settings
             row.update(scene=a.scene, variant=r.plan.variant, faces=len(a.faces),
@@ -194,7 +308,7 @@ def write_report(items: list[Item], folder: Path, look: Look) -> None:
                          "settings": s.to_dict(only_changed=True), "outputs": it.outputs})
         rows.append(row)
     keys = ["file", "scene", "variant", "faces", "exposure", "temp_shift", "tint_shift", "highlights",
-            "whites", "blacks", "notes", "error"]
+            "whites", "blacks", "notes", "warnings", "error"]
     with open(folder / "summary.csv", "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=keys, extrasaction="ignore")
         w.writeheader()

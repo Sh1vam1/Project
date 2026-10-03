@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 
 import numpy as np
-import pytest
 
 from vivaah import cli, lut, wb, xmp
 from vivaah.looks import get_look

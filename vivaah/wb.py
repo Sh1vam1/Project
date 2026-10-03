@@ -176,11 +176,7 @@ def shift_matrix(temp_shift: float, tint_shift: float, base: tuple[float, float]
         return np.eye(3, dtype=np.float32)
     base = base or (D65_TEMP, D65_TINT)
     new = apply_shift(base[0], base[1], temp_shift, tint_shift)
-    xy_base = temp_tint_to_xy(*base)
-    xy_new = temp_tint_to_xy(*new)
-    scale = _cone(xy_base) / _cone(xy_new)
-    m = XYZ_TO_SRGB @ BRADFORD_INV @ np.diag(scale) @ BRADFORD @ SRGB_TO_XYZ
-    return m.astype(np.float32)
+    return adaptation_matrix(temp_tint_to_xy(*new), temp_tint_to_xy(*base))
 
 
 def shift_to_neutralize(observed_rgb: np.ndarray, base: tuple[float, float] | None = None) -> tuple[float, float]:

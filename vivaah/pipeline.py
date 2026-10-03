@@ -26,9 +26,14 @@ def seed_for(path: Path) -> int:
     return zlib.crc32(path.name.encode()) & 0xFFFFFFFF
 
 
-def analyze_path(path: str | Path, look: Look, strength: float = 1.0, use_auto: bool = True) -> Result:
+def analyze_photo(path: str | Path) -> tuple[analysis_mod.Analysis, np.ndarray]:
+    """Analysis of one photo (look independent) and its skin mask."""
     photo = imageio.load(path, long_edge=analysis_mod.ANALYSIS_EDGE, fast=True)
-    a, mask = analysis_mod.analyze(photo)
+    return analysis_mod.analyze(photo)
+
+
+def analyze_path(path: str | Path, look: Look, strength: float = 1.0, use_auto: bool = True) -> Result:
+    a, mask = analyze_photo(path)
     return Result(Path(path), a, auto.plan(a, look, strength, auto=use_auto), mask)
 
 

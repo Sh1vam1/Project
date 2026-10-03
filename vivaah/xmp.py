@@ -258,17 +258,18 @@ def write_sidecar(photo_path: str | Path, s: DevelopSettings, as_shot: tuple[flo
     photo_path = Path(photo_path)
     side = sidecar_path(photo_path)
     base = read_as_shot(side) or as_shot
+    root = None
     if side.is_file():
-        backup = side.with_suffix(".xmp.vivaah-backup")
-        if not backup.exists():
-            shutil.copy2(side, backup)
         try:
-            tree = ET.parse(side)
-            root = tree.getroot()
+            root = ET.parse(side).getroot()
         except ET.ParseError:
             root = None
-    else:
-        root = None
+        # Back up only a sidecar someone else wrote (Lightroom, Photo Mechanic...). One that
+        # vivaah created itself has nothing to preserve: restore simply removes it.
+        ours = root is not None and any(d.get(_q("vivaah:Version")) for d in root.iter(_q("rdf:Description")))
+        backup = side.with_suffix(".xmp.vivaah-backup")
+        if not ours and not backup.exists():
+            shutil.copy2(side, backup)
     if root is None:
         root, desc = _document()
     else:

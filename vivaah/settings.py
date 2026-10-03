@@ -146,16 +146,6 @@ class DevelopSettings:
                 setattr(self, k, float(v))
         return self
 
-    def add(self, d: dict[str, Any]) -> "DevelopSettings":
-        """Add per-photo deltas on top of the current values (then clamp)."""
-        for k, v in d.items():
-            if k in ("hue", "sat", "lum"):
-                for band, x in v.items():
-                    getattr(self, k)[band] += float(x)
-            else:
-                setattr(self, k, getattr(self, k) + float(v))
-        return self.clamp()
-
     def clamp(self) -> "DevelopSettings":
         c = _clip
         self.exposure = c(self.exposure, -5, 5)

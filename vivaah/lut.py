@@ -12,21 +12,20 @@ from pathlib import Path
 
 import numpy as np
 
-from .color import linear_to_srgb, srgb_to_linear
-from .engine import GREY_ENC, compress_gamut, global_color, tone_curve_lut, calibration_matrix
+from .color import LUMA, linear_to_srgb, srgb_to_linear
+from .engine import colour_matrix, compress_gamut, global_color, tone_curve_lut
 from .looks import Look
 from .settings import DevelopSettings
-from . import wb
 
 
 def look_function(s: DevelopSettings):
     """Global (pixel-wise) version of the look used for LUTs."""
     xs, ys = tone_curve_lut(s)
-    m = calibration_matrix(s) @ wb.shift_matrix(s.temp_shift, s.tint_shift)
+    m = colour_matrix(s)
 
     def fn(enc: np.ndarray) -> np.ndarray:
         rgb = srgb_to_linear(enc) @ m.T
-        Y = np.maximum(rgb @ np.array([0.2126729, 0.7151522, 0.0721750], np.float32), 1e-7)
+        Y = np.maximum(rgb @ LUMA, 1e-7)
         p = linear_to_srgb(Y)
         p2 = np.interp(p, xs, ys).astype(np.float32)
         rgb = compress_gamut(rgb * (srgb_to_linear(p2) / Y)[..., None])

@@ -13,7 +13,7 @@ import numpy as np
 from . import faces as facemod
 from . import wb
 from .color import linear_to_oklab, linear_to_srgb, luminance, lab_to_lch, hue_distance, smoothstep
-from .engine import SKIN_HUE_IDEAL, RenderContext, band_weights, base_curve, tone_stage
+from .engine import SKIN_HUE_IDEAL, RenderContext, _chmax, band_weights, base_curve, tone_stage
 from .imageio import Photo
 from .settings import BANDS, DevelopSettings
 
@@ -63,6 +63,7 @@ class Analysis:
     outfit: dict = field(default_factory=dict)  # band -> fraction of very saturated pixels
     capture_time: str | None = None
     camera: str = ""
+    full_size: list | None = None  # original (width, height)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -81,13 +82,15 @@ def _neutral_view(photo: Photo) -> tuple[np.ndarray, np.ndarray]:
     return rgb, disp
 
 
-def skin_model_mask(lab: np.ndarray, found: list, shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+def skin_model_mask(lab: np.ndarray, found: list, shape: tuple[int, int],
+                    lch: tuple | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Probabilistic skin mask seeded from detected faces (generic model otherwise).
 
+    ``lch`` is ``lab_to_lch(lab)`` when the caller already has it.
     Returns (mask 0..1, boolean mask of the facial sample pixels).
     """
     h, w = shape
-    L, C, hue = lab_to_lch(lab)
+    L, C, hue = lch if lch is not None else lab_to_lch(lab)
     face_px = np.zeros((h, w), bool)
     for f in found:
         face_px |= facemod.face_skin_mask((h, w), f)
@@ -121,11 +124,11 @@ def skin_model_mask(lab: np.ndarray, found: list, shape: tuple[int, int]) -> tup
     return np.clip(prob, 0.0, 1.0), samples
 
 
-def _wb_candidates(scene_rgb: np.ndarray, lab: np.ndarray, disp_Y: np.ndarray, skin: np.ndarray,
+def _wb_candidates(scene_rgb: np.ndarray, lch: tuple, disp_Y: np.ndarray, skin: np.ndarray,
                    base: tuple[float, float] | None) -> list[WhiteBalanceCue]:
     cues: list[WhiteBalanceCue] = []
-    L, C, hue = lab_to_lch(lab)
-    mx = scene_rgb.max(axis=-1)
+    L, C, _ = lch
+    mx = _chmax(scene_rgb)
     usable = (mx < 0.97) & (lstar(disp_Y) > 22) & (skin < 0.3)  # not clipped, not too dark, not skin
     if usable.sum() > 200:
         # white patch: the brightest unclipped surfaces (dress, shirt, clouds) are usually white;
@@ -149,10 +152,10 @@ def _wb_candidates(scene_rgb: np.ndarray, lab: np.ndarray, disp_Y: np.ndarray, s
     # gray-edge (Minkowski p=6) on the linear image
     blur = cv2.GaussianBlur(scene_rgb, (0, 0), 1.0)
     edges = []
-    for c in range(3):
-        gx = cv2.Sobel(blur[..., c], cv2.CV_32F, 1, 0, ksize=3)
-        gy = cv2.Sobel(blur[..., c], cv2.CV_32F, 0, 1, ksize=3)
-        edges.append(np.sqrt(gx * gx + gy * gy))
+    for ch in cv2.split(blur):  # contiguous planes for OpenCV
+        gx = cv2.Sobel(ch, cv2.CV_32F, 1, 0, ksize=3)
+        gy = cv2.Sobel(ch, cv2.CV_32F, 0, 1, ksize=3)
+        edges.append(cv2.magnitude(gx, gy))
     e = np.stack(edges, axis=-1)[usable] if usable.sum() > 200 else np.stack(edges, axis=-1).reshape(-1, 3)
     est = np.power(np.mean(np.power(e + 1e-9, 6), axis=0), 1 / 6)
     if np.all(est > 0):
@@ -191,8 +194,8 @@ def _solve_wb(cues: list[WhiteBalanceCue], face_rgb: np.ndarray | None, face_con
     return float(M[i, j]), float(T[i, j])
 
 
-def _palette(lab: np.ndarray, valid: np.ndarray) -> dict:
-    L, C, hue = lab_to_lch(lab)
+def _palette(lch: tuple, valid: np.ndarray) -> dict:
+    L, C, hue = lch
     colourful = valid & (C > 0.03)
     out = {}
     if colourful.sum() < 50:
@@ -222,11 +225,14 @@ def analyze(photo: Photo) -> tuple[Analysis, np.ndarray]:
     enc8 = (np.clip(linear_to_srgb(disp), 0, 1) * 255 + 0.5).astype(np.uint8)
     found = facemod.detect(enc8)
     lab = linear_to_oklab(np.clip(disp, 0, 1))
+    lch = lab_to_lch(lab)
     Y = luminance(np.clip(disp, 0, None))
     Ls = lstar(Y)
-    skin, face_px = skin_model_mask(lab, found, (h, w))
+    dmax = _chmax(disp)
+    skin, face_px = skin_model_mask(lab, found, (h, w), lch)
 
-    a = Analysis(width=w, height=h, is_raw=photo.is_raw, camera=photo.camera)
+    a = Analysis(width=w, height=h, is_raw=photo.is_raw, camera=photo.camera,
+                 full_size=list(photo.full_size) if any(photo.full_size) else None)
     a.capture_time = photo.capture_time.isoformat() if photo.capture_time else None
     a.wb_as_shot = list(photo.wb_as_shot) if photo.wb_as_shot else None
     a.faces = [f.to_dict(w, h) for f in found]
@@ -234,7 +240,7 @@ def analyze(photo: Photo) -> tuple[Analysis, np.ndarray]:
     a.skin_fraction = float((skin > 0.5).mean())
     pct = np.percentile(Ls, [0.5, 1, 5, 25, 50, 75, 95, 99, 99.5])
     a.lum = {k: round(float(v), 2) for k, v in zip(("p0.5", "p1", "p5", "p25", "p50", "p75", "p95", "p99", "p99.5"), pct)}
-    a.clip_high = float((disp.max(axis=-1) >= 0.995).mean())
+    a.clip_high = float((dmax >= 0.995).mean())
     a.clip_low = float((Ls < 1.0).mean())
     a.mean_log2 = float(np.mean(np.log2(np.maximum(Y, 1e-5))))
 
@@ -242,15 +248,15 @@ def analyze(photo: Photo) -> tuple[Analysis, np.ndarray]:
     face_conf = 0.0
     if face_px.sum() >= 40:
         a.skin_L = round(float(np.median(Ls[face_px])), 2)
-        L, C, hh = lab_to_lch(lab[face_px])
-        a.skin_oklab = [round(float(np.median(L)), 4), round(float(np.median(C)), 4), round(float(np.median(hh)), 2)]
+        a.skin_oklab = [round(float(np.median(lch[0][face_px])), 4), round(float(np.median(lch[1][face_px])), 4),
+                        round(float(np.median(lch[2][face_px])), 2)]
         face_rgb = np.median(scene_rgb[face_px], axis=0)
         face_conf = float(min(1.0, face_px.sum() / 400.0) * max(f.score for f in found))
 
     base = photo.wb_as_shot if photo.is_raw else None
     # only a face-seeded skin model is specific enough to exclude pixels from the white search
     # (under warm light a white dress matches the generic skin colours)
-    cues = _wb_candidates(scene_rgb, lab, Y, skin if found else np.zeros_like(skin), base)
+    cues = _wb_candidates(scene_rgb, lch, Y, skin if face_px.sum() >= 40 else np.zeros_like(skin), base)
     a.wb_cues = cues
     a.wb_shift = list(_solve_wb(cues, face_rgb, face_conf, base, photo.is_raw))
     if photo.is_raw and photo.wb_as_shot:
@@ -260,9 +266,9 @@ def analyze(photo: Photo) -> tuple[Analysis, np.ndarray]:
         # for rendered files the camera already balanced once: estimate the light from the residual
     a.illuminant_k = round(float(k), 0)
 
-    valid = (Ls > 8) & (disp.max(axis=-1) < 0.995)
-    a.palette = _palette(lab, valid)
-    L, C, hh = lab_to_lch(lab)
+    valid = (Ls > 8) & (dmax < 0.995)
+    a.palette = _palette(lch, valid)
+    L, C, hh = lch
     foliage = valid & (hh > 95) & (hh < 175) & (C > 0.03) & (C < 0.15) & (skin < 0.3)
     if foliage.mean() > 0.02:
         a.foliage = {"frac": round(float(foliage.mean()), 4), "h": round(float(np.median(hh[foliage])), 2),

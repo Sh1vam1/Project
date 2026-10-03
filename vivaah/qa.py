@@ -31,11 +31,12 @@ from __future__ import annotations
 
 import html
 import json
-import math
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 import numpy as np
 from PIL import Image, ImageCms
@@ -283,8 +284,9 @@ def _face_pixels(enc: np.ndarray) -> np.ndarray | None:
     return px[keep] if keep.sum() >= 30 else None
 
 
-def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list[Check]]:
+def photo_checks(path: Path, look, size: int, out_dir: Path, uid: str | None = None) -> tuple[dict, list[Check]]:
     name = path.name
+    uid = uid or path.stem
     checks: list[Check] = []
     t0 = time.time()
     res = pipeline.analyze_path(path, look)
@@ -293,10 +295,10 @@ def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list
     enc = pipeline.render_photo(photo, res.plan.settings, res.skin_mask, encoded=True)
     before = pipeline.render_photo(photo, DevelopSettings(), encoded=True)
     t2 = time.time()
-    out = out_dir / "graded" / (path.stem + ".jpg")
+    out = out_dir / "graded" / (uid + ".jpg")
     imageio.save(enc, out, exif=photo.exif, encoded=True)
     a = res.analysis
-    m = {"photo": name, "scene": a.scene, "variant": res.plan.variant, "faces": len(a.faces),
+    m = {"photo": name, "id": uid, "scene": a.scene, "variant": res.plan.variant, "faces": len(a.faces),
          "analyse_s": round(t1 - t0, 2), "render_s": round(t2 - t1, 2),
          "exposure": round(res.plan.settings.exposure, 2), "temp_shift": round(res.plan.settings.temp_shift, 1),
          "tint_shift": round(res.plan.settings.tint_shift, 1), "notes": res.plan.notes}
@@ -317,8 +319,9 @@ def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list
                         f"{dims[0]}x{dims[1]}", f"long edge {want}", name))
 
     e8 = arr.astype(np.float32) / 255.0
-    clip = float((arr.max(axis=2) >= 254).mean() * 100)
-    crush = float((arr.max(axis=2) <= 2).mean() * 100)
+    amax = engine._chmax(arr)
+    clip = float((amax >= 254).mean() * 100)
+    crush = float((amax <= 2).mean() * 100)
     night = a.scene == "night"
     checks.append(Check("exposure", "highlight clipping (pixels at 254-255)", _grade(clip, 0.5, 2.0),
                         f"{clip:.2f}%", "< 0.5%", name))
@@ -347,7 +350,7 @@ def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list
         lo_ire = 20 if night else 35
         checks.append(Check("skin", "skin luma on the waveform (IRE)",
                             "pass" if lo_ire <= ire <= 80 else "warn", f"{ire:.0f}", f"{lo_ire}-80", name))
-        bpx = _face_pixels(before)
+        bpx = bpx0
         if bpx is not None:
             lab_a = linear_to_lab(srgb_to_linear(np.median(px, axis=0)[None]))[0]
             lab_b = linear_to_lab(srgb_to_linear(np.median(bpx, axis=0)[None]))[0]
@@ -359,7 +362,7 @@ def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list
 
     lab = linear_to_lab(srgb_to_linear(e8))
     C = np.hypot(lab[..., 1], lab[..., 2])
-    white = (lab[..., 0] > 80) & (C < 14) & (arr.max(axis=2) < 254)
+    white = (lab[..., 0] > 80) & (C < 14) & (amax < 254)
     if white.mean() > 0.005:
         wa, wb_ = np.median(lab[white][:, 1]), np.median(lab[white][:, 2])
         status = "pass" if abs(wa) <= 4 and -4 <= wb_ <= 12 else "warn"
@@ -372,7 +375,7 @@ def photo_checks(path: Path, look, size: int, out_dir: Path) -> tuple[dict, list
     for tag, img in (("before", before), ("after", enc)):
         t = Image.fromarray(imageio.dither_8bit(img))
         t.thumbnail((520, 520))
-        t.save(thumbs / f"{path.stem}_{tag}.jpg", quality=85)
+        t.save(thumbs / f"{uid}_{tag}.jpg", quality=85)
     return m, checks
 
 
@@ -409,8 +412,11 @@ def write_report(out_dir: Path, look_id: str, checks: list[Check], metrics: list
         f"<tr><td>{html.escape(c.area)}</td><td>{html.escape(c.photo)}</td><td>{html.escape(c.name)}</td>"
         f"<td><b style='color:{colour[c.status]}'>{c.status.upper()}</b></td><td>{html.escape(c.value)}</td>"
         f"<td>{html.escape(c.target)}</td></tr>" for c in sorted(checks, key=lambda c: ("fail", "warn", "info", "pass").index(c.status)))
+    def src(m: dict, tag: str) -> str:
+        return html.escape("thumbs/" + quote(f"{m['id']}_{tag}.jpg"), quote=True)
+
     cards = "".join(
-        f"<figure><div><img src='thumbs/{Path(m['photo']).stem}_before.jpg'><img src='thumbs/{Path(m['photo']).stem}_after.jpg'></div>"
+        f'<figure><div><img src="{src(m, "before")}" alt="before"><img src="{src(m, "after")}" alt="after"></div>'
         f"<figcaption><b>{html.escape(m['photo'])}</b> · {m['scene']} → {m['variant']} · faces {m['faces']} · "
         f"exposure {m['exposure']:+.2f} · WB {m['temp_shift']:+.0f}/{m['tint_shift']:+.0f}</figcaption></figure>"
         for m in metrics)
@@ -433,18 +439,18 @@ waveform limits (clipping, crushed blacks, skin IRE), Adobe Camera Raw slider ra
 
 
 def run(inputs: list[str], look_id: str = "signature", out_dir: str = "vivaah_qa", size: int = 2048,
-        limit: int | None = None, log=print) -> tuple[Path, list[Check]]:
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    look = get_look(look_id)
+        limit: int | None = None, log=print, looks_dirs: list | None = None) -> tuple[Path, list[Check]]:
+    out = imageio.mark_output_dir(out_dir)  # later runs and gradings skip this folder
+    look = get_look(look_id, looks_dirs)
     log("engine and Lightroom-file checks ...")
-    checks = engine_checks(out)
+    with tempfile.TemporaryDirectory(prefix="vivaah-qa-") as tmp:
+        checks = engine_checks(Path(tmp))
     paths = imageio.find_photos(inputs)[:limit] if inputs else []
     metrics = []
     for i, p in enumerate(paths, 1):
         log(f"photo {i}/{len(paths)}: {p.name}")
         try:
-            m, c = photo_checks(p, look, size, out)
+            m, c = photo_checks(p, look, size, out, uid=f"{i:04d}_{p.stem}")
             metrics.append(m)
             checks += c
         except Exception as exc:  # noqa: BLE001 - report and keep going

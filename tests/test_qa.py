@@ -36,9 +36,18 @@ def test_engine_checks_all_pass(tmp_path):
 
 
 def test_qa_run_writes_report(jpeg_folder, tmp_path):
+    (jpeg_folder / "c_warm.jpg").rename(jpeg_folder / "c_Priya's mehendi.jpg")  # quotes and spaces in names
     report, checks = qa.run([str(jpeg_folder)], out_dir=str(tmp_path / "qa"), size=400, log=lambda *_: None)
     assert report.exists() and "vivaah QA report" in report.read_text()
     data = json.loads((tmp_path / "qa" / "report.json").read_text())
     assert len(data["photos"]) == 3
     assert any(c.area == "file" and "sRGB" in c.name and c.status == "pass" for c in checks)
-    assert (tmp_path / "qa" / "graded" / "a_day.jpg").exists()
+    assert [p.name for p in sorted((tmp_path / "qa" / "graded").glob("*.jpg"))] == [
+        "0001_a_day.jpg", "0002_b_dark.jpg", "0003_c_Priya's mehendi.jpg"]
+    page = report.read_text()
+    assert 'src="thumbs/0003_c_Priya%27s%20mehendi_before.jpg"' in page
+    assert (tmp_path / "qa" / "thumbs" / "0003_c_Priya's mehendi_before.jpg").exists()
+    # the report folder is tagged so a second run does not grade its own outputs
+    report2, _ = qa.run([str(jpeg_folder), str(tmp_path)], out_dir=str(tmp_path / "qa"), size=300,
+                        log=lambda *_: None)
+    assert len(json.loads((tmp_path / "qa" / "report.json").read_text())["photos"]) == 3

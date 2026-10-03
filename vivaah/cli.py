@@ -43,21 +43,22 @@ def cmd_grade(args) -> int:
 
 
 def cmd_preview(args) -> int:
-    from . import imageio, pipeline, sheet
+    from . import auto, imageio, pipeline, sheet
     from .looks import all_looks, get_look
     from .settings import DevelopSettings
 
     names = list(all_looks(_looks_dirs(args))) if args.looks == "all" else args.looks.split(",")
+    looks = [get_look(name.strip(), _looks_dirs(args)) for name in names]
     photo = imageio.load(args.input, long_edge=args.size)
+    a, skin_mask = pipeline.analyze_photo(args.input)  # once: the analysis does not depend on the look
     tiles = [(sheet.to_image(pipeline.render_photo(photo, DevelopSettings()), args.size), "original")]
-    for name in names:
-        look = get_look(name.strip(), _looks_dirs(args))
-        res = pipeline.analyze_path(args.input, look, args.strength)
-        img = pipeline.render_photo(photo, res.plan.settings, res.skin_mask)
-        label = look.id if res.plan.variant == "base" else f"{look.id} ({res.plan.variant})"
+    for look in looks:
+        plan = auto.plan(a, look, args.strength)
+        img = pipeline.render_photo(photo, plan.settings, skin_mask)
+        label = look.id if plan.variant == "base" else f"{look.id} ({plan.variant})"
         tiles.append((sheet.to_image(img, args.size), label))
         if args.verbose:
-            print(f"{look.id}: " + " | ".join(res.plan.notes))
+            print(f"{look.id}: " + " | ".join(plan.notes))
     out = Path(args.out or Path(args.input).with_name(Path(args.input).stem + "_looks.jpg"))
     cols = min(4, len(tiles))
     sheet.grid(tiles, cols=cols, tile=args.size, title=Path(args.input).name).save(out, quality=92)
@@ -108,7 +109,8 @@ def cmd_learn(args) -> int:
     path = save_learned(look, args.out)
     print(f"Measured {len(fps)} reference photo(s).")
     print(f"Saved look '{look.id}' to {path}")
-    print(f"Use it with: vivaah grade <folder> --look {look.id} --xmp")
+    extra = f' --looks-dir "{path.parent}"' if args.out else ""
+    print(f"Use it with: vivaah{extra} grade <folder> --look {look.id} --xmp")
     if args.verbose:
         print(json.dumps({"auto": look.auto, "settings": look.settings}, indent=1))
     return 0
@@ -139,7 +141,8 @@ def cmd_restore(args) -> int:
 def cmd_qa(args) -> int:
     from .qa import run
 
-    _, checks = run(args.inputs, look_id=args.look, out_dir=args.out, size=args.size, limit=args.limit)
+    _, checks = run(args.inputs, look_id=args.look, out_dir=args.out, size=args.size, limit=args.limit,
+                    looks_dirs=_looks_dirs(args))
     return 1 if any(c.status == "fail" for c in checks) else 0
 
 

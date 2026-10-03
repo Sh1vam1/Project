@@ -20,9 +20,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .analysis import Analysis, display_to_scene_luminance, lstar, lstar_to_y
-from .color import lab_to_lch, lch_to_lab, linear_to_oklab, oklab_to_linear
-from . import wb
-from .engine import base_curve, calibration_matrix, global_color
+from .color import LUMA, lab_to_lch, lch_to_lab, linear_to_oklab, oklab_to_linear
+from .engine import base_curve, colour_matrix, compress_gamut, global_color
 from .looks import AutoTargets, Look
 from .settings import DevelopSettings
 
@@ -114,17 +113,30 @@ def _white_balance(a: Analysis, t: AutoTargets, scene: str) -> tuple[float, floa
     return ts, tt, note
 
 
-def _render_lch(L: float, C: float, h: float, s: DevelopSettings) -> tuple[float, float, float]:
-    """How a colour measured in the neutral view renders with ``s`` (white balance included)."""
+def _render_lch(L: float, C: float, h: float, s: DevelopSettings,
+                base: tuple[float, float] | None = None, skin: float = 0.0) -> tuple[float, float, float]:
+    """How a colour measured in the neutral view renders with ``s`` (white balance included).
+
+    ``base`` is the raw file's as-shot (Kelvin, tint): white-balance shifts are
+    relative to it, exactly as the renderer and the Lightroom sidecar apply them.
+    ``skin`` is the weight of the renderer's skin-safe colour path (faces: ``skin_protect``).
+    """
     rgb = oklab_to_linear(lch_to_lab(np.array([L], np.float32), np.array([C], np.float32), np.array([h], np.float32)))
-    m = calibration_matrix(s) @ wb.shift_matrix(s.temp_shift, s.tint_shift)
-    rgb = np.clip(rgb.reshape(1, 3) @ m.T, 0, None)
-    Y = float(rgb[0] @ np.array([0.2126729, 0.7151522, 0.0721750]))
+    rgb = np.clip(rgb.reshape(1, 3) @ colour_matrix(s, base).T, 0, None)
+    Y = float(rgb[0] @ LUMA)
     if Y > 1.0:
         rgb = rgb / Y
-    out = global_color(np.clip(rgb, 0, 1), s)
+    rgb = np.clip(rgb, 0, 1)
+    out = compress_gamut(global_color(rgb, s))
+    if skin > 0:
+        safe = compress_gamut(global_color(rgb, s, skin_safe=True))
+        out = out + (safe - out) * np.float32(min(skin, 1.0))
     Lo, Co, ho = lab_to_lch(linear_to_oklab(np.clip(out, 1e-6, None)))
     return float(Lo[0]), float(Co[0]), float(ho[0])
+
+
+def _wb_base(a: Analysis) -> tuple[float, float] | None:
+    return tuple(a.wb_as_shot) if a.is_raw and a.wb_as_shot else None
 
 
 def _refine_skin_balance(a: Analysis, s: DevelopSettings, t: AutoTargets) -> str | None:
@@ -138,7 +150,8 @@ def _refine_skin_balance(a: Analysis, s: DevelopSettings, t: AutoTargets) -> str
         return None
     col = tuple(a.skin_oklab)
     tol = 6.0 if a.scene in ("night", "warm_indoor") else 3.0
-    h0 = _render_lch(*col, s)[2]
+    base = _wb_base(a)
+    h0 = _render_lch(*col, s, base, s.skin_protect)[2]
     err0 = _hue_err(t.skin_hue, h0)
     if abs(err0) <= tol:
         return None
@@ -148,7 +161,7 @@ def _refine_skin_balance(a: Analysis, s: DevelopSettings, t: AutoTargets) -> str
     for dt in np.arange(-lim_t, lim_t + 0.01, 1.5):
         for dm in np.arange(-lim_m, lim_m + 0.01, 3.0):
             s.tint_shift, s.temp_shift = base_t + dt, base_m + dm
-            e = _hue_err(t.skin_hue, _render_lch(*col, s)[2])
+            e = _hue_err(t.skin_hue, _render_lch(*col, s, base, s.skin_protect)[2])
             e = max(abs(e) - tol * 0.5, 0.0)
             cost = e ** 2 + 0.02 * dt ** 2 + 0.02 * dm ** 2
             if cost < best[0]:
@@ -164,11 +177,12 @@ def _hue_err(a: float, b: float) -> float:
 
 
 def _steer(s: DevelopSettings, colour: tuple[float, float, float], kind: str, target: float,
-           knobs: list[tuple[str, str]], limit: float, tolerance: float) -> float:
+           knobs: list[tuple[str, str]], limit: float, tolerance: float,
+           base: tuple[float, float] | None = None, skin: float = 0.0) -> float:
     """Nudge HSL sliders so ``colour`` renders at ``target`` hue or chroma. Returns total move."""
     moved = 0.0
     for _ in range(3):
-        Lo, Co, ho = _render_lch(*colour, s)
+        Lo, Co, ho = _render_lch(*colour, s, base, skin)
         err = _hue_err(target, ho) if kind == "hue" else math.log(target / max(Co, 1e-4))
         if abs(err) < tolerance:
             break
@@ -177,7 +191,7 @@ def _steer(s: DevelopSettings, colour: tuple[float, float, float], kind: str, ta
             d = getattr(s, group)
             old = d[band]
             d[band] = old + 10.0
-            Lo2, Co2, ho2 = _render_lch(*colour, s)
+            Lo2, Co2, ho2 = _render_lch(*colour, s, base, skin)
             d[band] = old
             slope = (_hue_err(ho2, ho) if kind == "hue" else math.log(max(Co2, 1e-4) / max(Co, 1e-4))) / 10.0
             if best is None or abs(slope) > abs(best[2]):
@@ -185,8 +199,8 @@ def _steer(s: DevelopSettings, colour: tuple[float, float, float], kind: str, ta
         if best is None or abs(best[2]) < 1e-4:
             break
         group, band, slope = best
-        step = float(np.clip(err / slope, -limit - moved, limit - moved))
-        step = float(np.clip(step, -limit, limit))
+        budget = limit - moved  # total movement (either direction) stays within ``limit``
+        step = float(np.clip(err / slope, -budget, budget))
         getattr(s, group)[band] = float(np.clip(getattr(s, group)[band] + step, -100, 100))
         moved += abs(step)
         if moved >= limit:
@@ -237,32 +251,35 @@ def plan(a: Analysis, look: Look, strength: float = 1.0, auto: bool = True) -> P
         s.shadows += float(np.clip((7.0 - p5) * 3.0, 0.0, 25.0))
 
     # 5. palette normalisation
+    base = _wb_base(a)
     outfit_bands = {b for b, f in a.outfit.items() if f > 0.02}
     steer_greens = (a.foliage and a.foliage["frac"] > 0.05 and a.scene != "night"
                     and t.foliage_hue is not None and "green" not in outfit_bands)
     if steer_greens:
         col = (a.foliage["L"], a.foliage["C"], a.foliage["h"])
-        m = _steer(s, col, "hue", t.foliage_hue, [("hue", "green"), ("hue", "yellow")], 25.0, 3.0)
+        m = _steer(s, col, "hue", t.foliage_hue, [("hue", "green"), ("hue", "yellow")], 25.0, 3.0, base)
         if t.foliage_chroma:
-            _, c_now, _ = _render_lch(*col, s)
+            _, c_now, _ = _render_lch(*col, s, base)
             limit = 25.0 if c_now > t.foliage_chroma else 10.0  # mute freely, boost gently
-            m += _steer(s, col, "chroma", t.foliage_chroma, [("sat", "green"), ("sat", "yellow")], limit, 0.08)
+            m += _steer(s, col, "chroma", t.foliage_chroma, [("sat", "green"), ("sat", "yellow")], limit, 0.08,
+                        base)
         if m:
             p.notes.append(f"greens steered ({m:.0f} slider units)")
     if a.sky and t.sky_chroma and a.scene != "night":
         col = (a.sky["L"], a.sky["C"], 250.0)
-        if _steer(s, col, "chroma", t.sky_chroma, [("sat", "blue"), ("sat", "aqua")], 20.0, 0.1):
+        if _steer(s, col, "chroma", t.sky_chroma, [("sat", "blue"), ("sat", "aqua")], 20.0, 0.1, base):
             p.notes.append("sky saturation steered")
     if a.skin_oklab:
         col = tuple(a.skin_oklab)
-        Lo, Co, ho = _render_lch(*col, s)
+        prot = s.skin_protect
+        Lo, Co, ho = _render_lch(*col, s, base, prot)
         if abs(_hue_err(t.skin_hue, ho)) > 4.0:
-            _steer(s, col, "hue", t.skin_hue, [("hue", "orange")], 10.0, 2.5)
+            _steer(s, col, "hue", t.skin_hue, [("hue", "orange")], 10.0, 2.5, base, prot)
         lo, hi = t.skin_chroma
         if Co < lo:
-            _steer(s, col, "chroma", lo, [("sat", "orange")], 15.0, 0.05)
+            _steer(s, col, "chroma", lo, [("sat", "orange")], 15.0, 0.05, base, prot)
         elif Co > hi:
-            _steer(s, col, "chroma", hi, [("sat", "orange")], 15.0, 0.05)
+            _steer(s, col, "chroma", hi, [("sat", "orange")], 15.0, 0.05, base, prot)
 
     # 6. outfit protection: very saturated clothing is not scenery
     for band in outfit_bands:

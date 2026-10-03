@@ -25,7 +25,6 @@ import numpy as np
 from . import wb
 from .color import (
     LUMA,
-    SRGB_TO_XYZ,
     XYZ_TO_SRGB,
     D65_XY,
     hue_distance,
@@ -89,9 +88,13 @@ def calibration_matrix(s: DevelopSettings) -> np.ndarray:
     return (XYZ_TO_SRGB @ m_new).astype(np.float32)
 
 
+def colour_matrix(s: DevelopSettings, wb_base: tuple[float, float] | None = None) -> np.ndarray:
+    """Calibration + white balance (relative to ``wb_base``) as one linear-sRGB matrix."""
+    return (calibration_matrix(s) @ wb.shift_matrix(s.temp_shift, s.tint_shift, wb_base)).astype(np.float32)
+
+
 def scene_matrix(s: DevelopSettings, ctx: RenderContext) -> np.ndarray:
-    m = calibration_matrix(s) @ wb.shift_matrix(s.temp_shift, s.tint_shift, ctx.wb_base)
-    return (m * np.float32(2.0 ** s.exposure)).astype(np.float32)
+    return (colour_matrix(s, ctx.wb_base) * np.float32(2.0 ** s.exposure)).astype(np.float32)
 
 
 # ---------------------------------------------------------------- stage B
@@ -124,11 +127,6 @@ def _pchip(xs: np.ndarray, ys: np.ndarray, x: np.ndarray) -> np.ndarray:
     )
 
 
-def _oetf_ext(y: np.ndarray) -> np.ndarray:
-    """sRGB encoding extended past 1.0 so over-range raw data keeps its order."""
-    return np.where(y <= 1.0, linear_to_srgb(y), 1.055 * np.power(np.maximum(y, 1.0), 1 / 2.4) - 0.055)
-
-
 # Default raw "profile" tone: +0.1 EV mid lift, gentle toe, film-like shoulder
 # that rolls sensor white into display white.
 _BASE_X = np.array([0.0, 0.08, 0.20, GREY_ENC, 0.70, 0.86, 1.0, 1.15, 1.40, 3.0])
@@ -140,7 +138,8 @@ _BASE_TABLE: np.ndarray | None = None
 
 
 def _base_exact(Y: np.ndarray) -> np.ndarray:
-    return srgb_to_linear(_pchip(_BASE_X, _BASE_Y, _oetf_ext(Y)).astype(np.float32))
+    # linear_to_srgb is not clipped above 1.0, so over-range raw data keeps its order
+    return srgb_to_linear(_pchip(_BASE_X, _BASE_Y, linear_to_srgb(Y)).astype(np.float32))
 
 
 def base_curve(Y: np.ndarray) -> np.ndarray:
@@ -208,13 +207,8 @@ def _guided_coeffs(I: np.ndarray, r: int, eps: float) -> tuple[np.ndarray, np.nd
     return _box(a, r), _box(b, r)
 
 
-def fast_guided_filter(I: np.ndarray, radius: float, eps: float, work_edge: int = 900) -> np.ndarray:
-    """Self-guided edge-preserving smoothing (He & Sun's fast guided filter)."""
-    h, w = I.shape
-    f = max(1.0, max(h, w) / work_edge)
-    lo = cv2.resize(I, (max(1, round(w / f)), max(1, round(h / f))), interpolation=cv2.INTER_AREA) if f > 1 else I
-    a, b = _guided_coeffs(lo, max(1, int(round(radius / f))), eps)
-    return _upsample_rows(a, 0, h, w, h) * I + _upsample_rows(b, 0, h, w, h)
+# cv2.remap needs maps (and its output) narrower and shorter than 32767 px
+REMAP_MAX = 32000
 
 
 def _upsample_rows(lo: np.ndarray, r0: int, r1: int, W: int, H: int) -> np.ndarray:
@@ -224,22 +218,29 @@ def _upsample_rows(lo: np.ndarray, r0: int, r1: int, W: int, H: int) -> np.ndarr
         return lo[r0:r1]
     xs = (np.arange(W, dtype=np.float32) + 0.5) * np.float32(w_lo / W) - 0.5
     ys = (np.arange(r0, r1, dtype=np.float32) + 0.5) * np.float32(h_lo / H) - 0.5
-    mx = np.ascontiguousarray(np.broadcast_to(xs[None, :], (r1 - r0, W)))
-    my = np.ascontiguousarray(np.broadcast_to(ys[:, None], (r1 - r0, W)))
-    return cv2.remap(lo, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+    def block(y: np.ndarray, x: np.ndarray) -> np.ndarray:
+        mx = np.ascontiguousarray(np.broadcast_to(x[None, :], (len(y), len(x))))
+        my = np.ascontiguousarray(np.broadcast_to(y[:, None], (len(y), len(x))))
+        return cv2.remap(lo, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+    if len(ys) < REMAP_MAX and W < REMAP_MAX:
+        return block(ys, xs)
+    out = np.empty((len(ys), W) + lo.shape[2:], lo.dtype)  # panoramas: tile the lookup
+    for i in range(0, len(ys), REMAP_MAX):
+        for j in range(0, W, REMAP_MAX):
+            out[i:i + REMAP_MAX, j:j + REMAP_MAX] = block(ys[i:i + REMAP_MAX], xs[j:j + REMAP_MAX])
+    return out
 
 
 def _interp_uniform(x: np.ndarray, ys: np.ndarray) -> np.ndarray:
     """1D lookup table on 0..1 (uniform samples), linear interpolation, multi-threaded."""
     n = len(ys)
-    if x.ndim != 2 or x.shape[1] > 32000 or n > 32000:
+    if x.ndim != 2 or x.shape[0] >= REMAP_MAX or x.shape[1] >= REMAP_MAX or n >= REMAP_MAX:
         return np.interp(x, np.linspace(0.0, 1.0, n), ys).astype(np.float32)
     tex = np.ascontiguousarray(ys, dtype=np.float32).reshape(1, n)
-    shape = x.shape
-    x2 = x.reshape(-1, shape[-1]) if x.ndim > 1 else x.reshape(1, -1)
-    mx = np.ascontiguousarray(np.clip(x2, 0.0, 1.0) * np.float32(n - 1), dtype=np.float32)
-    my = np.zeros_like(mx)
-    return cv2.remap(tex, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE).reshape(shape)
+    mx = np.ascontiguousarray(np.clip(x, 0.0, 1.0) * np.float32(n - 1), dtype=np.float32)
+    return cv2.remap(tex, mx, np.zeros_like(mx), cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
 
 def _chmax(x: np.ndarray) -> np.ndarray:
@@ -547,11 +548,19 @@ def global_color(rgb: np.ndarray, s: DevelopSettings, skin_safe: bool = False) -
         Ls, Cs, hs = lab_to_lch(lab)
         dh = ((hs - h0 + 180.0) % 360.0) - 180.0
         hs = h0 + np.clip(dh, -5.0, 5.0)
-        # nudge toward the flattering skin window, never across it
-        hs = hs + np.clip(SKIN_HUE_LO - hs, 0, None) * 0.5 - np.clip(hs - SKIN_HUE_HI, 0, None) * 0.5
+        # nudge toward the flattering skin window, never across it (circular hue maths)
+        rel = ((hs - SKIN_HUE_IDEAL + 180.0) % 360.0) - 180.0
+        lo, hi = SKIN_HUE_LO - SKIN_HUE_IDEAL, SKIN_HUE_HI - SKIN_HUE_IDEAL
+        rel = rel + np.clip(lo - rel, 0, None) * 0.5 - np.clip(rel - hi, 0, None) * 0.5
+        hs = (SKIN_HUE_IDEAL + rel) % 360.0
         Cs = np.clip(Cs, C0 * 0.85, np.maximum(C0 * 1.12, 0.02))
         Ls = L0 + (Ls - L0) * 0.85
-        lab = lch_to_lab(Ls, Cs, hs)
+        safe = lch_to_lab(Ls, Cs, hs)
+        # Only skin-coloured pixels get the protected rendering: a pink dupatta or a
+        # red lehenga under the soft edge of the skin mask keeps the normal look.
+        dist0 = np.abs(((h0 - SKIN_HUE_IDEAL + 180.0) % 360.0) - 180.0)
+        w = (1.0 - smoothstep(22.0, 45.0, dist0)) * smoothstep(0.004, 0.02, C0) * (1.0 - smoothstep(0.15, 0.21, C0))
+        lab = lab + (safe - lab) * w[..., None]
 
     return oklab_to_linear(lab)
 
@@ -565,7 +574,7 @@ def build_lut(s: DevelopSettings, size: int = LUT_SIZE, skin_safe: bool = False)
     return linear_to_srgb(out).reshape(size, size, size, 3)
 
 
-_TEX_CACHE: dict = {}
+_TEX_CACHE: dict = {}  # id(lut) -> (lut, texture); holds the look LUT and its skin-safe twin
 
 
 def _lut_texture(lut: np.ndarray) -> np.ndarray:
@@ -575,13 +584,14 @@ def _lut_texture(lut: np.ndarray) -> np.ndarray:
         return hit[1]
     n = lut.shape[0]
     tex = np.ascontiguousarray(np.transpose(lut, (1, 2, 0, 3)).reshape(n, n * n, 3), dtype=np.float32)
-    _TEX_CACHE.clear()
+    while len(_TEX_CACHE) >= 2:
+        _TEX_CACHE.pop(next(iter(_TEX_CACHE)))
     _TEX_CACHE[id(lut)] = (lut, tex)
     return tex
 
 
 def apply_lut(enc: np.ndarray, lut: np.ndarray, chunk_rows: int = 1024) -> np.ndarray:
-    """Trilinear 3D-LUT lookup on sRGB-encoded pixels.
+    """Trilinear 3D-LUT lookup on sRGB-encoded pixels of any shape (..., 3).
 
     Uses two bilinear ``cv2.remap`` lookups (the neighbouring blue slices) and a
     blend, which is exact trilinear interpolation and runs multi-threaded.
@@ -590,51 +600,56 @@ def apply_lut(enc: np.ndarray, lut: np.ndarray, chunk_rows: int = 1024) -> np.nd
     tex = _lut_texture(lut)
     src = np.asarray(enc, dtype=np.float32)
     shape = src.shape
-    img = src.reshape(1, -1, 3) if src.ndim != 3 else src
-    out = np.empty_like(img)
-    for r0 in range(0, img.shape[0], chunk_rows):
-        part = np.clip(img[r0:r0 + chunk_rows], 0.0, 1.0) * np.float32(n - 1)
-        fr, fg, fb = part[..., 0], part[..., 1], part[..., 2]
-        b0 = np.minimum(fb.astype(np.int32), n - 2)
-        wb = (fb - b0)[..., None]
-        x0 = np.ascontiguousarray(b0 * n + fr, dtype=np.float32)
-        fg = np.ascontiguousarray(fg)
-        s0 = cv2.remap(tex, x0, fg, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-        s1 = cv2.remap(tex, x0 + np.float32(n), fg, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
-        out[r0:r0 + chunk_rows] = s0 + (s1 - s0) * wb
-    return out.reshape(shape)
-
-
-def _color_rows(rgb: np.ndarray, s: DevelopSettings, mask: np.ndarray | None, luts: tuple | None) -> np.ndarray:
-    """Stage C on display-linear rows; returns sRGB-encoded rows."""
-    if luts is None:
-        out = compress_gamut(global_color(rgb, s))
-        if mask is not None:
-            safe = compress_gamut(global_color(rgb, s, skin_safe=True))
-            out = out + (safe - out) * mask[..., None]
-        return linear_to_srgb(out)
-    enc = linear_to_srgb(np.clip(rgb, 0, 1))
-    out = apply_lut(enc, luts[0])
-    if mask is not None and luts[1] is not None:
-        rows = np.flatnonzero(mask.max(axis=1) > 0.004)
-        if rows.size:
-            cols = np.flatnonzero(mask[rows[0]:rows[-1] + 1].max(axis=0) > 0.004)
-            box = (slice(rows[0], rows[-1] + 1), slice(cols[0], cols[-1] + 1))
-            safe = apply_lut(np.ascontiguousarray(enc[box]), luts[1])
-            out[box] += (safe - out[box]) * mask[box][..., None]
+    if src.ndim != 3:  # a list of colours: lay it out as rows of at most 4096 pixels
+        flat = src.reshape(-1, 3)
+        m = len(flat)
+        cols = min(4096, max(1, m))
+        grid = np.zeros((-(-m // cols) * cols, 3), np.float32)
+        grid[:m] = flat
+        return apply_lut(grid.reshape(-1, cols, 3), lut, chunk_rows).reshape(-1, 3)[:m].reshape(shape)
+    out = np.empty_like(src)
+    for r0 in range(0, shape[0], min(chunk_rows, REMAP_MAX)):
+        for c0 in range(0, shape[1], REMAP_MAX):
+            blk = (slice(r0, r0 + min(chunk_rows, REMAP_MAX)), slice(c0, c0 + REMAP_MAX))
+            part = np.clip(src[blk], 0.0, 1.0) * np.float32(n - 1)
+            fr, fg, fb = part[..., 0], part[..., 1], part[..., 2]
+            b0 = np.minimum(fb.astype(np.int32), n - 2)
+            wb = (fb - b0)[..., None]
+            x0 = np.ascontiguousarray(b0 * n + fr, dtype=np.float32)
+            fg = np.ascontiguousarray(fg)
+            s0 = cv2.remap(tex, x0, fg, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            s1 = cv2.remap(tex, x0 + np.float32(n), fg, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+            out[blk] = s0 + (s1 - s0) * wb
     return out
 
 
-def color_stage(rgb: np.ndarray, s: DevelopSettings, ctx: RenderContext) -> np.ndarray:
-    """Stage C on a whole image. Takes display-linear RGB, returns sRGB-encoded RGB."""
-    h, w = rgb.shape[:2]
-    mask = None
-    if ctx.skin_mask is not None and s.skin_protect > 0:
-        mask = np.clip(_upsample_rows(ctx.skin_mask.astype(np.float32), 0, h, w, h) * s.skin_protect, 0.0, 1.0)
-    luts = None
-    if h * w > DIRECT_COLOR_MAX_PIXELS:
-        luts = (build_lut(s), build_lut(s, skin_safe=True) if mask is not None else None)
-    return _color_rows(rgb, s, mask, luts)
+def _mask_box(mask: np.ndarray, thr: float = 0.004) -> tuple[slice, slice] | None:
+    """Bounding box of the pixels where ``mask`` matters (None when it is empty)."""
+    rows = np.flatnonzero(mask.max(axis=1) > thr)
+    if not rows.size:
+        return None
+    cols = np.flatnonzero(mask[rows[0]:rows[-1] + 1].max(axis=0) > thr)
+    return slice(rows[0], rows[-1] + 1), slice(cols[0], cols[-1] + 1)
+
+
+def _color_rows(rgb: np.ndarray, s: DevelopSettings, mask: np.ndarray | None, luts: tuple | None) -> np.ndarray:
+    """Stage C on display-linear rows; returns sRGB-encoded rows.
+
+    The skin-safe variant is only evaluated inside the bounding box of the skin mask.
+    """
+    box = _mask_box(mask) if mask is not None else None
+    if luts is None:
+        out = compress_gamut(global_color(rgb, s))
+        if box is not None:
+            safe = compress_gamut(global_color(np.ascontiguousarray(rgb[box]), s, skin_safe=True))
+            out[box] += (safe - out[box]) * mask[box][..., None]
+        return linear_to_srgb(out)
+    enc = linear_to_srgb(np.clip(rgb, 0, 1))
+    out = apply_lut(enc, luts[0])
+    if box is not None and luts[1] is not None:
+        safe = apply_lut(np.ascontiguousarray(enc[box]), luts[1])
+        out[box] += (safe - out[box]) * mask[box][..., None]
+    return out
 
 
 # ---------------------------------------------------------------- stage D

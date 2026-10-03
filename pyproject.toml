@@ -13,6 +13,7 @@ dependencies = [
     "opencv-python-headless>=4.8",
     "pillow>=10.1",
     "rawpy>=0.18",
+    "tifffile>=2021.1",
 ]
 
 [project.optional-dependencies]

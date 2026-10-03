@@ -75,7 +75,7 @@ vivaah lut --out ~/Desktop/vivaah-luts           # .cube LUTs for video
 vivaah learn ~/Desktop/refs --name "Aanya Style"  # create a look from reference edits
 vivaah analyze photo.NEF                     # what vivaah sees and what it would change
 vivaah qa ~/Downloads/test                   # quality check against industry references (HTML report)
-vivaah restore "/path/to/wedding"            # undo: restore the original sidecars
+vivaah restore "/path/to/wedding"            # undo: original sidecars back, vivaah's own removed
 ```
 
 **Quality check.** `vivaah qa <folder>` grades the photos and writes
@@ -88,6 +88,11 @@ for:
 - sRGB profile and EXIF in the finished files
 - every Lightroom value inside Adobe's slider ranges
 - consistency across the set, and speed
+
+**Safe to re-run.** vivaah never writes finished files into the folder of the
+originals and never overwrites a photo. It skips its own output folders, so running it
+again on the same wedding does not grade its own JPEGs. Photos with the same name from
+different photographers' folders get separate files.
 
 Every `grade` run writes `vivaah_report/` containing:
 
