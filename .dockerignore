@@ -32,3 +32,6 @@
 **/values.dev.yaml
 LICENSE
 README.md
+
+# Vivaah is a separate application, not part of the Docker example.
+vivaah/
