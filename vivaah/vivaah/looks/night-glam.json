@@ -1,0 +1,69 @@
+{
+  "id": "night-glam",
+  "name": "Night Glam - Sangeet & Reception",
+  "description": "Controls stage and LED colour casts (purple, green, blue spill) while keeping the party mood: clean skin, deep blacks, warm practical lights, cool shadows.",
+  "best_for": [
+    "sangeet",
+    "reception",
+    "stage & LED lighting",
+    "night events"
+  ],
+  "settings": {
+    "contrast": 14,
+    "highlights": -60,
+    "shadows": 10,
+    "whites": -10,
+    "blacks": -18,
+    "clarity": 5,
+    "dehaze": 4,
+    "vibrance": 5,
+    "saturation": -10,
+    "curve": [[0, 4], [64, 58], [128, 128], [192, 192], [255, 240]],
+    "hue": {
+      "blue": -10,
+      "purple": 10
+    },
+    "sat": {
+      "red": -5,
+      "orange": -6,
+      "green": -40,
+      "aqua": -30,
+      "blue": -30,
+      "purple": -35,
+      "magenta": -25
+    },
+    "lum": {
+      "orange": 6,
+      "purple": -10,
+      "magenta": -5
+    },
+    "grade_shadow_hue": 215,
+    "grade_shadow_sat": 10,
+    "grade_high_hue": 38,
+    "grade_high_sat": 10,
+    "grade_blending": 55,
+    "grade_balance": -10,
+    "vignette_amount": -10,
+    "vignette_midpoint": 45,
+    "vignette_feather": 70,
+    "vignette_highlights": 40,
+    "sharpen_amount": 40,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.9
+  },
+  "auto": {
+    "skin_L": 58,
+    "skin_zone": [-14, 10],
+    "scene_mid_L": 30,
+    "white_L": 90,
+    "black_L": 1.5,
+    "warmth": 2,
+    "tint": 1,
+    "ambience_keep": 0.3,
+    "skin_hue": 46,
+    "skin_chroma": [0.055, 0.095]
+  },
+  "variants": {}
+}

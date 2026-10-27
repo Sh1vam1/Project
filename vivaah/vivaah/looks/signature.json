@@ -1,0 +1,153 @@
+{
+  "id": "signature",
+  "name": "Signature - Warm Editorial",
+  "description": "Built from your reference edits: warm ivory whites that never go paper-white, olive-muted greens, slate-soft blues, peach-golden skin, deep crimson reds and deep blacks with a warm tint. Night and warm-indoor photos automatically switch to the moody / amber variants seen in the references.",
+  "best_for": [
+    "couple portraits",
+    "pre-wedding shoots",
+    "day ceremonies",
+    "receptions",
+    "family portraits"
+  ],
+  "settings": {
+    "contrast": 8,
+    "highlights": -30,
+    "shadows": 10,
+    "whites": -4,
+    "blacks": -6,
+    "texture": -6,
+    "vibrance": 8,
+    "saturation": -6,
+    "curve": [[0, 4], [60, 55], [128, 128], [192, 197], [255, 246]],
+    "curve_red": [[0, 9], [64, 64], [255, 255]],
+    "curve_green": [[0, 4], [64, 64], [255, 255]],
+    "curve_blue": [[0, 0], [128, 127], [255, 253]],
+    "hue": {
+      "red": -6,
+      "orange": 2,
+      "yellow": -14,
+      "green": -52,
+      "aqua": -18,
+      "blue": -16,
+      "purple": 0,
+      "magenta": 4
+    },
+    "sat": {
+      "red": 4,
+      "orange": -5,
+      "yellow": -20,
+      "green": -34,
+      "aqua": -38,
+      "blue": -34,
+      "purple": -20,
+      "magenta": -12
+    },
+    "lum": {
+      "red": -8,
+      "orange": 7,
+      "yellow": -8,
+      "green": -12,
+      "aqua": -10,
+      "blue": -6
+    },
+    "grade_shadow_hue": 38,
+    "grade_shadow_sat": 8,
+    "grade_mid_hue": 40,
+    "grade_mid_sat": 2,
+    "grade_high_hue": 48,
+    "grade_high_sat": 2,
+    "grade_blending": 62,
+    "grade_balance": -6,
+    "cal_red_hue": 4,
+    "cal_blue_sat": 10,
+    "vignette_amount": -8,
+    "vignette_midpoint": 45,
+    "vignette_feather": 70,
+    "vignette_highlights": 40,
+    "grain_amount": 8,
+    "grain_size": 20,
+    "grain_roughness": 45,
+    "sharpen_amount": 40,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.7
+  },
+  "auto": {
+    "skin_L": 64,
+    "scene_mid_L": 50,
+    "white_L": 93,
+    "black_L": 2.5,
+    "warmth": 3,
+    "tint": 2,
+    "ambience_keep": 0.25,
+    "foliage_hue": 108,
+    "foliage_chroma": 0.06,
+    "sky_chroma": 0.035,
+    "skin_hue": 48,
+    "skin_chroma": [0.055, 0.085]
+  },
+  "variants": {
+    "night": {
+      "settings": {
+        "contrast": 16,
+        "highlights": -55,
+        "shadows": 0,
+        "whites": -22,
+        "blacks": -14,
+        "vibrance": 4,
+        "saturation": -10,
+        "curve": [[0, 2], [64, 56], [128, 128], [192, 188], [255, 228]],
+        "grade_shadow_hue": 205,
+        "grade_shadow_sat": 9,
+        "grade_mid_hue": 38,
+        "grade_mid_sat": 4,
+        "grade_high_hue": 40,
+        "grade_high_sat": 12,
+        "grade_balance": -15,
+        "vignette_amount": -14
+      },
+      "auto": {
+        "skin_L": 46,
+        "scene_mid_L": 22,
+        "white_L": 82,
+        "black_L": 1.0,
+        "ambience_keep": 0.35,
+        "warmth": 4,
+        "skin_zone": [-16, 10]
+      }
+    },
+    "warm_indoor": {
+      "settings": {
+        "contrast": 12,
+        "highlights": -40,
+        "whites": -14,
+        "saturation": -10,
+        "curve": [[0, 6], [64, 58], [128, 128], [192, 192], [255, 236]],
+        "grade_shadow_hue": 30,
+        "grade_shadow_sat": 10,
+        "grade_mid_hue": 38,
+        "grade_mid_sat": 7,
+        "grade_high_hue": 42,
+        "grade_high_sat": 14,
+        "sat": {
+          "orange": -10,
+          "yellow": -24
+        }
+      },
+      "auto": {
+        "skin_L": 58,
+        "scene_mid_L": 40,
+        "white_L": 88,
+        "ambience_keep": 0.45,
+        "warmth": 8
+      }
+    },
+    "shade": {
+      "auto": {
+        "warmth": 10,
+        "tint": 3
+      }
+    }
+  }
+}

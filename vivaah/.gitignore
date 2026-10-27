@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+
+# Your photos, references and outputs stay on your computer, never in git
+references/
+my-references/
+photos/
+graded/
+output/
+exports/
+vivaah_report/
+lightroom-presets/
+luts/
+*.xmp.vivaah-backup
+
+# Camera files
+*.CR2
+*.CR3
+*.NEF
+*.ARW
+*.RAF
+*.ORF
+*.RW2
+*.DNG
+*.cr2
+*.cr3
+*.nef
+*.arw
+*.raf
+*.orf
+*.rw2
+*.dng
+
+# macOS
+.DS_Store

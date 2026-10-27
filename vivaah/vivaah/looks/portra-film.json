@@ -1,0 +1,76 @@
+{
+  "id": "portra-film",
+  "name": "Portra Film - Warm & Soft",
+  "description": "Kodak Portra-inspired: soft matte contrast, warm golden highlights, slightly cool film-base shadows, gentle olive greens and fine organic grain. Timeless and flattering on every skin tone.",
+  "best_for": [
+    "candid moments",
+    "golden hour",
+    "family portraits",
+    "film-style galleries"
+  ],
+  "settings": {
+    "contrast": -10,
+    "highlights": -30,
+    "shadows": 20,
+    "whites": -5,
+    "blacks": 5,
+    "texture": -5,
+    "vibrance": 10,
+    "saturation": -8,
+    "curve": [[0, 18], [64, 70], [128, 134], [192, 198], [255, 244]],
+    "curve_red": [[0, 4], [64, 64], [255, 255]],
+    "curve_blue": [[0, 12], [128, 126], [255, 238]],
+    "hue": {
+      "red": 4,
+      "orange": 5,
+      "yellow": -10,
+      "green": -35,
+      "aqua": -10,
+      "blue": -15
+    },
+    "sat": {
+      "red": -4,
+      "orange": -5,
+      "yellow": -10,
+      "green": -30,
+      "aqua": -25,
+      "blue": -25,
+      "purple": -15
+    },
+    "lum": {
+      "orange": 6,
+      "green": -10,
+      "blue": -5
+    },
+    "grade_shadow_hue": 190,
+    "grade_shadow_sat": 5,
+    "grade_mid_hue": 35,
+    "grade_mid_sat": 4,
+    "grade_high_hue": 50,
+    "grade_high_sat": 10,
+    "grade_blending": 65,
+    "grain_amount": 18,
+    "grain_size": 30,
+    "grain_roughness": 55,
+    "sharpen_amount": 30,
+    "sharpen_radius": 1.0,
+    "sharpen_detail": 25,
+    "sharpen_masking": 40,
+    "skin_protect": 0.6
+  },
+  "auto": {
+    "skin_L": 64,
+    "scene_mid_L": 52,
+    "white_L": 94,
+    "black_L": 7,
+    "warmth": 6,
+    "tint": 1,
+    "ambience_keep": 0.35,
+    "foliage_hue": 110,
+    "foliage_chroma": 0.055,
+    "sky_chroma": 0.04,
+    "skin_hue": 49,
+    "skin_chroma": [0.055, 0.095]
+  },
+  "variants": {}
+}
